@@ -60,7 +60,7 @@ const users: (User & { password: string })[] = [
   {
     id: 6,
     name: "Swan Pyae Aung",
-    email: "swan.pyae@example.com",,
+    email: "swan.pyae@example.com",
     password: "student123",
     rollNumber: "20260000002",
     phone: "09222222222",
