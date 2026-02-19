@@ -68,7 +68,7 @@ export default function LoginPage() {
           <CardTitle className="text-2xl font-bold text-center">
             {isTeacher ? "Teacher Login" : "Student Login"}
           </CardTitle>
-          <CardDescription className="text-center">Enter your credentials to access your account</CardDescription>
+          <CardDescription className="text-center">Enter your credentials to access your account ! </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
