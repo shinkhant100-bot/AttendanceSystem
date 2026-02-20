@@ -11,12 +11,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { loginUser } from "@/app/actions/auth-actions"
 import { useToast } from "@/hooks/use-toast"
+import useAuthStore from "@/hooks/use-auth-token-store"
 
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isTeacher = searchParams.get("role") === "teacher" || searchParams.get("role") === "admin"
   const { toast } = useToast()
+  const { setAuth, logout } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -32,6 +34,9 @@ export default function LoginPage() {
       const result = await loginUser({ email, password, isTeacher: isTeacherLogin })
 
       if (result.success) {
+        if (result.token) {
+          setAuth({ token: result.token, user: null })
+        }
         toast({
           title: "Login successful",
           description: "Redirecting to dashboard",
@@ -44,6 +49,7 @@ export default function LoginPage() {
           router.push("/student/dashboard")
         }
       } else {
+        logout()
         toast({
           title: "Login failed",
           description: result.error || "Invalid credentials",
@@ -51,6 +57,7 @@ export default function LoginPage() {
         })
       }
     } catch (error) {
+      logout()
       toast({
         title: "Login failed",
         description: "An unexpected error occurred",

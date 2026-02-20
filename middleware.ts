@@ -9,9 +9,10 @@ export function middleware(request: NextRequest) {
 
   // Get the session cookie
   const sessionCookie = request.cookies.get("session")?.value
+  const authToken = request.cookies.get("authToken")?.value
 
-  // If the path is not public and there's no session, redirect to login
-  if (!isPublicPath && !sessionCookie) {
+  // If the path is not public and session/token is missing, redirect to login
+  if (!isPublicPath && (!sessionCookie || !authToken)) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 

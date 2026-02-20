@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { AttendanceRecord } from "@/app/types"
 import { getUserProfile, logout } from "@/app/actions/auth-actions"
 import { useRouter } from "next/navigation"
+import useAuthStore from "@/hooks/use-auth-token-store"
 
 function getStatusBadgeClass(status: AttendanceRecord["status"]) {
   if (status === "present") return "bg-green-100 text-green-800"
@@ -27,6 +28,7 @@ function getStatusLabel(status: AttendanceRecord["status"]) {
 export default function StudentDashboard() {
   const { toast } = useToast()
   const router = useRouter()
+  const clearToken = useAuthStore((state) => state.logout)
   const [isLoading, setIsLoading] = useState(false)
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([])
   const [userProfile, setUserProfile] = useState<{ name: string; rollNumber: string } | null>(null)
@@ -94,6 +96,7 @@ export default function StudentDashboard() {
 
   async function handleLogout() {
     await logout()
+    clearToken()
     router.push("/login")
   }
 

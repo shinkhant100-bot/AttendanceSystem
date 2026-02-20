@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: "node_modules/.cache/next",
   typescript: {
     ignoreBuildErrors: true,
   },

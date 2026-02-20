@@ -163,12 +163,15 @@ export async function loginUser({
       }
     }
 
+    const authToken = crypto.randomUUID()
+
     // Create session
     const session = {
       userId: user.id,
       name: user.name,
       email: user.email,
       rollNumber: user.rollNumber,
+      token: authToken,
       role: user.role,
       subjects: user.subjects ?? [],
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1 week
@@ -185,9 +188,16 @@ export async function loginUser({
       maxAge: 60 * 60 * 24 * 7, // 1 week
       path: "/",
     })
+    cookieStore.set("authToken", authToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+      path: "/",
+    })
 
     return {
       success: true,
+      token: authToken,
     }
   } catch (error) {
     console.error("Login error:", error)
@@ -217,6 +227,7 @@ export async function getUserProfile() {
     // Check if session is expired
     if (new Date(session.expiresAt) < new Date()) {
       cookieStore.delete("session")
+      cookieStore.delete("authToken")
       return {
         success: false,
         error: "Session expired",
@@ -246,6 +257,7 @@ export async function getUserProfile() {
 export async function logout() {
   const cookieStore = await cookies()
   cookieStore.delete("session")
+  cookieStore.delete("authToken")
 }
 
 // Middleware to check if user is authenticated

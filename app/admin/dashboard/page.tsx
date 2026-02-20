@@ -21,6 +21,7 @@ import {
 import { getUserProfile, logout } from "@/app/actions/auth-actions"
 import { useToast } from "@/hooks/use-toast"
 import type { AttendanceRecord } from "@/app/types"
+import useAuthStore from "@/hooks/use-auth-token-store"
 
 interface FingerprintStudent {
   name: string
@@ -42,6 +43,7 @@ function getStatusLabel(status: AttendanceRecord["status"]) {
 export default function TeacherDashboard() {
   const router = useRouter()
   const { toast } = useToast()
+  const clearToken = useAuthStore((state) => state.logout)
   const [isLoading, setIsLoading] = useState(true)
   const [teacherName, setTeacherName] = useState("")
   const [teacherSubjects, setTeacherSubjects] = useState<string[]>([])
@@ -202,6 +204,7 @@ export default function TeacherDashboard() {
 
   async function handleLogout() {
     await logout()
+    clearToken()
     router.push("/login?role=teacher")
   }
 
