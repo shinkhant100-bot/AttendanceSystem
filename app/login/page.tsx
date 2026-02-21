@@ -16,7 +16,9 @@ import useAuthStore from "@/hooks/use-auth-token-store"
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isTeacher = searchParams.get("role") === "teacher" || searchParams.get("role") === "admin"
+  const loginRole = searchParams.get("role")
+  const isTeacher = loginRole === "teacher"
+  const isAdmin = loginRole === "admin"
   const { toast } = useToast()
   const { setAuth, logout } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
@@ -28,10 +30,10 @@ export default function LoginPage() {
     const formData = new FormData(event.currentTarget)
     const email = formData.get("email") as string
     const password = formData.get("password") as string
-    const isTeacherLogin = isTeacher
+    const loginAs = isAdmin ? "admin" : isTeacher ? "teacher" : undefined
 
     try {
-      const result = await loginUser({ email, password, isTeacher: isTeacherLogin })
+      const result = await loginUser({ email, password, loginAs })
 
       if (result.success) {
         if (result.token) {
@@ -43,7 +45,9 @@ export default function LoginPage() {
         })
 
         // Redirect based on user role
-        if (isTeacherLogin) {
+        if (isAdmin) {
+          router.push("/admin/panel")
+        } else if (isTeacher) {
           router.push("/admin/dashboard")
         } else {
           router.push("/student/dashboard")
@@ -75,7 +79,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
-            {isTeacher ? "Teacher Login" : "Student Login"}
+            {isAdmin ? "Admin Login" : isTeacher ? "Teacher Login" : "Student Login"}
           </CardTitle>
           <CardDescription className="text-center">Enter your credentials to access your account ! </CardDescription>
         </CardHeader>
@@ -105,6 +109,10 @@ export default function LoginPage() {
             {isTeacher ? (
               <Link href="/login" className="font-medium text-primary hover:text-primary/80">
                 Login as Student
+              </Link>
+            ) : isAdmin ? (
+              <Link href="/login?role=teacher" className="font-medium text-primary hover:text-primary/80">
+                Login as Teacher
               </Link>
             ) : (
               <>

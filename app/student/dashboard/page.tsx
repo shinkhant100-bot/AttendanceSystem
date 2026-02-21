@@ -50,7 +50,11 @@ export default function StudentDashboard() {
         }
 
         if (profile.data.role !== "student") {
-          router.push("/admin/dashboard")
+          if (profile.data.role === "admin") {
+            router.push("/admin/panel")
+          } else {
+            router.push("/admin/dashboard")
+          }
           return
         }
 

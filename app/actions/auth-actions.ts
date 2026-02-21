@@ -4,20 +4,36 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import type { User } from "@/app/types"
 
-// In a real app, this would be stored in a database
+interface Course {
+  id: number
+  name: string
+  teacherEmail: string | null
+  studentRollNumbers: string[]
+}
+
 const users: (User & { password: string })[] = [
   {
     id: 1,
+    name: "System Admin",
+    email: "admin@example.com",
+    password: "admin123",
+    rollNumber: "",
+    phone: "09000000000",
+    role: "admin",
+    subjects: [],
+  },
+  {
+    id: 2,
     name: "Teacher Alice",
     email: "alice.teacher@example.com",
-    password: "teacher123", // In a real app, this would be hashed
+    password: "teacher123",
     rollNumber: "",
     phone: "",
     role: "teacher",
     subjects: ["CRP"],
   },
   {
-    id: 2,
+    id: 3,
     name: "Teacher Bob",
     email: "bob.teacher@example.com",
     password: "teacher123",
@@ -27,7 +43,7 @@ const users: (User & { password: string })[] = [
     subjects: ["IOT"],
   },
   {
-    id: 3,
+    id: 4,
     name: "Teacher Carol",
     email: "carol.teacher@example.com",
     password: "teacher123",
@@ -37,7 +53,7 @@ const users: (User & { password: string })[] = [
     subjects: ["BPS"],
   },
   {
-    id: 4,
+    id: 5,
     name: "Teacher David",
     email: "david.teacher@example.com",
     password: "teacher123",
@@ -47,7 +63,7 @@ const users: (User & { password: string })[] = [
     subjects: ["WDD"],
   },
   {
-    id: 5,
+    id: 6,
     name: "Shinn Khant Aung",
     email: "shinn.khant@example.com",
     password: "student123",
@@ -58,7 +74,7 @@ const users: (User & { password: string })[] = [
     subjects: [],
   },
   {
-    id: 6,
+    id: 7,
     name: "Swan Pyae Aung",
     email: "swan.pyae@example.com",
     password: "student123",
@@ -69,7 +85,7 @@ const users: (User & { password: string })[] = [
     subjects: [],
   },
   {
-    id: 7,
+    id: 8,
     name: "Thet Myat Noe",
     email: "thet.myat@example.com",
     password: "student123",
@@ -80,7 +96,7 @@ const users: (User & { password: string })[] = [
     subjects: [],
   },
   {
-    id: 8,
+    id: 9,
     name: "Myat Thu Kha",
     email: "myat.thu@example.com",
     password: "student123",
@@ -92,7 +108,39 @@ const users: (User & { password: string })[] = [
   },
 ]
 
-// Register user
+const courses: Course[] = [
+  { id: 1, name: "CRP", teacherEmail: "alice.teacher@example.com", studentRollNumbers: [] },
+  { id: 2, name: "IOT", teacherEmail: "bob.teacher@example.com", studentRollNumbers: [] },
+  { id: 3, name: "BPS", teacherEmail: "carol.teacher@example.com", studentRollNumbers: [] },
+  { id: 4, name: "WDD", teacherEmail: "david.teacher@example.com", studentRollNumbers: [] },
+]
+
+function syncTeacherSubjectsFromCourses() {
+  const teacherSubjectsMap = new Map<string, string[]>()
+
+  for (const course of courses) {
+    if (!course.teacherEmail) continue
+    if (!teacherSubjectsMap.has(course.teacherEmail)) {
+      teacherSubjectsMap.set(course.teacherEmail, [])
+    }
+    teacherSubjectsMap.get(course.teacherEmail)!.push(course.name)
+  }
+
+  for (const user of users) {
+    if (user.role === "teacher") {
+      user.subjects = teacherSubjectsMap.get(user.email) ?? []
+    }
+  }
+}
+
+async function requireAdminProfile() {
+  const profile = await getUserProfile()
+  if (!profile.success || profile.data.role !== "admin") {
+    return null
+  }
+  return profile.data
+}
+
 export async function registerUser(userData: {
   name: string
   email: string
@@ -101,7 +149,6 @@ export async function registerUser(userData: {
   password: string
 }) {
   try {
-    // Check if user already exists
     const existingUser = users.find((user) => user.email === userData.email || user.rollNumber === userData.rollNumber)
 
     if (existingUser) {
@@ -111,16 +158,12 @@ export async function registerUser(userData: {
       }
     }
 
-    // In a real app, you would hash the password before storing it
-    const newUser = {
+    users.push({
       id: users.length + 1,
       ...userData,
-      role: "student" as const,
+      role: "student",
       subjects: [],
-    }
-
-    // Add user to our "database"
-    users.push(newUser)
+    })
 
     return {
       success: true,
@@ -134,38 +177,34 @@ export async function registerUser(userData: {
   }
 }
 
-// Login user
 export async function loginUser({
   email,
   password,
-  isTeacher = false,
+  loginAs,
 }: {
   email: string
   password: string
-  isTeacher?: boolean
+  loginAs?: "teacher" | "admin"
 }) {
   try {
-    // Find user
     const user = users.find((u) => u.email === email && u.password === password)
 
     if (!user) {
       return {
         success: false,
-        error: "Invalid credentials",
+        error: "Incorrect email or password",
       }
     }
 
-    // Check if teacher login but user is not a teacher
-    if (isTeacher && user.role !== "teacher") {
+    if (loginAs && user.role !== loginAs) {
       return {
         success: false,
-        error: "You do not have teacher privileges",
+        error: `You do not have ${loginAs} privileges`,
       }
     }
 
     const authToken = crypto.randomUUID()
 
-    // Create session
     const session = {
       userId: user.id,
       name: user.name,
@@ -174,24 +213,20 @@ export async function loginUser({
       token: authToken,
       role: user.role,
       subjects: user.subjects ?? [],
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1 week
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     }
 
-    // In a real app, you would encrypt this session data
-    const sessionStr = JSON.stringify(session)
-
-    // Set cookie
     const cookieStore = await cookies()
-    cookieStore.set("session", sessionStr, {
+    cookieStore.set("session", JSON.stringify(session), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     })
     cookieStore.set("authToken", authToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     })
 
@@ -208,7 +243,6 @@ export async function loginUser({
   }
 }
 
-// Get user profile from session
 export async function getUserProfile() {
   try {
     const cookieStore = await cookies()
@@ -221,10 +255,8 @@ export async function getUserProfile() {
       }
     }
 
-    // In a real app, you would decrypt the session data
     const session = JSON.parse(sessionCookie.value)
 
-    // Check if session is expired
     if (new Date(session.expiresAt) < new Date()) {
       cookieStore.delete("session")
       cookieStore.delete("authToken")
@@ -240,7 +272,7 @@ export async function getUserProfile() {
         name: session.name,
         email: session.email,
         rollNumber: session.rollNumber,
-        role: session.role,
+        role: session.role as User["role"],
         subjects: session.subjects ?? [],
       },
     }
@@ -253,31 +285,165 @@ export async function getUserProfile() {
   }
 }
 
-// Logout user
 export async function logout() {
   const cookieStore = await cookies()
   cookieStore.delete("session")
   cookieStore.delete("authToken")
 }
 
-// Middleware to check if user is authenticated
 export async function requireAuth() {
   const profile = await getUserProfile()
-
   if (!profile.success) {
     redirect("/login")
   }
-
   return profile.data
 }
 
-// Middleware to check if user is a teacher
 export async function requireTeacher() {
   const profile = await getUserProfile()
-
   if (!profile.success || profile.data.role !== "teacher") {
     redirect("/login?role=teacher")
   }
-
   return profile.data
+}
+
+export async function requireAdmin() {
+  const profile = await getUserProfile()
+  if (!profile.success || profile.data.role !== "admin") {
+    redirect("/login?role=admin")
+  }
+  return profile.data
+}
+
+export async function getAdminPanelData() {
+  const admin = await requireAdminProfile()
+  if (!admin) {
+    return { success: false, error: "Not authorized" }
+  }
+
+  const teachers = users.filter((u) => u.role === "teacher").map((t) => ({ name: t.name, email: t.email }))
+  const students = users
+    .filter((u) => u.role === "student")
+    .map((s) => ({ name: s.name, rollNumber: s.rollNumber, email: s.email }))
+
+  return {
+    success: true,
+    data: {
+      courses,
+      teachers,
+      students,
+    },
+  }
+}
+
+export async function createCourse({ name }: { name: string }) {
+  const admin = await requireAdminProfile()
+  if (!admin) return { success: false, error: "Not authorized" }
+
+  const courseName = name.trim().toUpperCase()
+  if (!courseName) return { success: false, error: "Course name is required" }
+  if (courses.some((c) => c.name === courseName)) return { success: false, error: "Course already exists" }
+
+  courses.push({
+    id: courses.length + 1,
+    name: courseName,
+    teacherEmail: null,
+    studentRollNumbers: [],
+  })
+
+  return { success: true }
+}
+
+export async function assignTeacherToCourse({
+  courseId,
+  teacherEmail,
+}: {
+  courseId: number
+  teacherEmail: string
+}) {
+  const admin = await requireAdminProfile()
+  if (!admin) return { success: false, error: "Not authorized" }
+
+  const course = courses.find((c) => c.id === courseId)
+  if (!course) return { success: false, error: "Course not found" }
+
+  const teacher = users.find((u) => u.email === teacherEmail && u.role === "teacher")
+  if (!teacher) return { success: false, error: "Teacher not found" }
+
+  course.teacherEmail = teacherEmail
+  syncTeacherSubjectsFromCourses()
+
+  return { success: true }
+}
+
+export async function enrollStudentInCourse({
+  courseId,
+  studentRollNumber,
+}: {
+  courseId: number
+  studentRollNumber: string
+}) {
+  const admin = await requireAdminProfile()
+  if (!admin) return { success: false, error: "Not authorized" }
+
+  const course = courses.find((c) => c.id === courseId)
+  if (!course) return { success: false, error: "Course not found" }
+
+  const student = users.find((u) => u.rollNumber === studentRollNumber && u.role === "student")
+  if (!student) return { success: false, error: "Student not found" }
+
+  if (!course.studentRollNumbers.includes(studentRollNumber)) {
+    course.studentRollNumbers.push(studentRollNumber)
+  }
+
+  return { success: true }
+}
+
+export async function registerStudentByAdmin(userData: {
+  name: string
+  email: string
+  rollNumber: string
+  phone: string
+  password: string
+}) {
+  const admin = await requireAdminProfile()
+  if (!admin) return { success: false, error: "Not authorized" }
+
+  const existingUser = users.find((user) => user.email === userData.email || user.rollNumber === userData.rollNumber)
+  if (existingUser) return { success: false, error: "User with this email or roll number already exists" }
+
+  users.push({
+    id: users.length + 1,
+    ...userData,
+    role: "student",
+    subjects: [],
+  })
+
+  return { success: true }
+}
+
+export async function registerTeacherByAdmin(userData: {
+  name: string
+  email: string
+  phone: string
+  password: string
+}) {
+  const admin = await requireAdminProfile()
+  if (!admin) return { success: false, error: "Not authorized" }
+
+  const existingUser = users.find((user) => user.email === userData.email)
+  if (existingUser) return { success: false, error: "User with this email already exists" }
+
+  users.push({
+    id: users.length + 1,
+    name: userData.name,
+    email: userData.email,
+    phone: userData.phone,
+    password: userData.password,
+    rollNumber: "",
+    role: "teacher",
+    subjects: [],
+  })
+
+  return { success: true }
 }

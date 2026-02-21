@@ -20,7 +20,7 @@ export default function Home() {
       </header>
 
       <main className="flex-grow flex items-center justify-center p-6">
-        <div className="max-w-6xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="max-w-7xl w-full grid grid-cols-1 md:grid-cols-3 gap-8">
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>For Students</CardTitle>
@@ -55,6 +55,27 @@ export default function Home() {
               <Link href="/login?role=teacher">
                 <Button variant="outline" className="w-full">
                   Login as Teacher
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>For Admin</CardTitle>
+              <CardDescription>Create courses and manage enrollment and teacher assignment</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">Admins can manage courses, assign teachers, and enroll students.</p>
+              <ul className="list-disc pl-5 space-y-2 mb-4">
+                <li>Create courses</li>
+                <li>Assign teachers to courses</li>
+                <li>Enroll students to courses</li>
+                <li>Register new students and teachers</li>
+              </ul>
+              <Link href="/login?role=admin">
+                <Button variant="secondary" className="w-full">
+                  Login as Admin
                 </Button>
               </Link>
             </CardContent>

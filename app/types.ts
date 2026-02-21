@@ -15,6 +15,6 @@ export interface User {
   rollNumber: string
   phone: string
   fingerprintId?: string
-  role: "student" | "teacher"
+  role: "student" | "teacher" | "admin"
   subjects?: string[]
 }

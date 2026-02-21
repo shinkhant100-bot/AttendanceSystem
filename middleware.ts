@@ -17,10 +17,22 @@ export function middleware(request: NextRequest) {
   }
 
   // If the path is for teacher dashboard and the user is not a teacher, redirect to login
-  if (path.startsWith("/admin") && sessionCookie) {
+  if (path.startsWith("/admin/panel") && sessionCookie) {
     try {
       const session = JSON.parse(sessionCookie)
-      const role = session.role ?? (session.isAdmin ? "teacher" : "student")
+      const role = session.role ?? (session.isAdmin ? "admin" : session.isTeacher ? "teacher" : "student")
+      if (role !== "admin") {
+        return NextResponse.redirect(new URL("/login?role=admin", request.url))
+      }
+    } catch (error) {
+      return NextResponse.redirect(new URL("/login?role=admin", request.url))
+    }
+  }
+
+  if (path.startsWith("/admin/dashboard") && sessionCookie) {
+    try {
+      const session = JSON.parse(sessionCookie)
+      const role = session.role ?? (session.isTeacher ? "teacher" : session.isAdmin ? "admin" : "student")
       if (role !== "teacher") {
         return NextResponse.redirect(new URL("/login?role=teacher", request.url))
       }
