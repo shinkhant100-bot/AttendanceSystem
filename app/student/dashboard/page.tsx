@@ -31,15 +31,45 @@ export default function StudentDashboard() {
   const clearToken = useAuthStore((state) => state.logout)
   const [isLoading, setIsLoading] = useState(false)
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([])
-  const [userProfile, setUserProfile] = useState<{ name: string; rollNumber: string } | null>(null)
+  const [userProfile, setUserProfile] = useState<{ name: string; rollNumber: string; subjects?: string[] } | null>(null)
+  const [historySubject, setHistorySubject] = useState("all")
+  const [historyDate, setHistoryDate] = useState<Date | undefined>(undefined)
   const [absenteeDate, setAbsenteeDate] = useState<Date | undefined>(new Date())
   const [absences, setAbsences] = useState<{ subject: string; date: string; status: string }[]>([])
+
+  const totalRecords = attendanceHistory.length
+  const presentCount = attendanceHistory.filter((record) => record.status === "present").length
+  const lateCount = attendanceHistory.filter((record) => record.status === "late").length
+  const seriousLateCount = attendanceHistory.filter((record) => record.status === "serious late").length
+  const absenceAbsentCount = absences.filter((item) => String(item.status).toLowerCase() !== "leave").length
+  const absenceLeaveCount = absences.filter((item) => String(item.status).toLowerCase() === "leave").length
+
+  const attendanceSubjects = Array.from(
+    new Set([...(userProfile?.subjects ?? []), ...attendanceHistory.map((record) => record.subject)].filter(Boolean)),
+  )
+  const filteredAttendanceHistory = attendanceHistory.filter((record) => {
+    if (historySubject !== "all") {
+      const selectedSubject = historySubject.trim().toLowerCase()
+      const recordSubject = String(record.subject ?? "")
+        .trim()
+        .toLowerCase()
+      if (recordSubject !== selectedSubject) return false
+    }
+
+    if (historyDate) {
+      const selectedDate = format(historyDate, "yyyy-MM-dd")
+      const parsed = new Date(record.date)
+      const recordDate = Number.isNaN(parsed.getTime()) ? String(record.date).slice(0, 10) : format(parsed, "yyyy-MM-dd")
+      if (recordDate !== selectedDate) return false
+    }
+    return true
+  })
 
   useEffect(() => {
     async function loadUserData() {
       try {
         const profile = await getUserProfile()
-        if (!profile.success) {
+        if (!profile.success || !profile.data) {
           toast({
             title: "Authentication Error",
             description: "Please login to continue",
@@ -61,14 +91,18 @@ export default function StudentDashboard() {
         setUserProfile(profile.data)
 
         const history = await getStudentAttendanceHistory()
-        if (history.success) {
+        if (history.success && history.data) {
           setAttendanceHistory(history.data)
+        } else {
+          setAttendanceHistory([])
         }
 
         const selected = format(new Date(), "yyyy-MM-dd")
         const absenteeism = await getStudentAbsenteeismByDate({ date: selected })
-        if (absenteeism.success) {
+        if (absenteeism.success && absenteeism.data) {
           setAbsences(absenteeism.data)
+        } else {
+          setAbsences([])
         }
       } catch (error) {
         toast({
@@ -90,7 +124,7 @@ export default function StudentDashboard() {
       if (!absenteeDate) return
       const selected = format(absenteeDate, "yyyy-MM-dd")
       const result = await getStudentAbsenteeismByDate({ date: selected })
-      if (result.success) {
+      if (result.success && result.data) {
         setAbsences(result.data)
       }
     }
@@ -127,6 +161,63 @@ export default function StudentDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-4 px-4 sm:px-0 sm:grid-cols-2 lg:grid-cols-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Student</CardDescription>
+              <CardTitle className="text-2xl">{userProfile?.rollNumber ?? "-"}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">{userProfile?.name ?? "Not loaded"}</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Records</CardDescription>
+              <CardTitle className="text-2xl">{totalRecords}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">All subjects</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Present</CardDescription>
+              <CardTitle className="text-2xl text-green-700">{presentCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">All time</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Late</CardDescription>
+              <CardTitle className="text-2xl text-yellow-700">{lateCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">All time</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Serious Late</CardDescription>
+              <CardTitle className="text-2xl text-red-700">{seriousLateCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">All time</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Absences</CardDescription>
+              <CardTitle className="text-2xl">
+                {absences.length}
+                <span className="ml-2 text-sm font-normal text-gray-500">
+                  ({absenceAbsentCount} absent, {absenceLeaveCount} leave)
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">
+              {absenteeDate ? `Date: ${format(absenteeDate, "PPP")}` : "Pick a date"}
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="px-4 py-6 sm:px-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
@@ -137,7 +228,32 @@ export default function StudentDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {attendanceHistory.length > 0 ? (
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    className="h-10 rounded-md border px-3"
+                    value={historySubject}
+                    onChange={(e) => setHistorySubject(e.target.value)}
+                  >
+                    <option value="all">All Subjects</option>
+                    {attendanceSubjects.map((subject) => (
+                      <option key={subject} value={subject}>
+                        {subject}
+                      </option>
+                    ))}
+                  </select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {historyDate ? format(historyDate, "PPP") : "All Dates"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar mode="single" selected={historyDate} onSelect={setHistoryDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                {filteredAttendanceHistory.length > 0 ? (
                   <div className="border rounded-md overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
@@ -154,7 +270,7 @@ export default function StudentDashboard() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {attendanceHistory.map((record, index) => (
+                        {filteredAttendanceHistory.map((record, index) => (
                           <tr key={index}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {new Date(record.date).toLocaleDateString()}
@@ -173,7 +289,7 @@ export default function StudentDashboard() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-4">No attendance records found</p>
+                  <p className="text-gray-500 text-center py-4">No attendance records for selected filters</p>
                 )}
               </CardContent>
             </Card>
@@ -216,7 +332,13 @@ export default function StudentDashboard() {
                           absences.map((item, index) => (
                             <tr key={`${item.subject}-${index}`}>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.subject}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-medium">Absent</td>
+                              <td
+                                className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                                  item.status === "leave" ? "text-blue-700" : "text-red-700"
+                                }`}
+                              >
+                                {item.status === "leave" ? "Leave" : "Absent"}
+                              </td>
                             </tr>
                           ))
                         ) : (

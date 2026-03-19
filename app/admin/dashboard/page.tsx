@@ -13,10 +13,10 @@ import { format } from "date-fns"
 import { CalendarIcon, Download, Fingerprint, Search } from "lucide-react"
 import {
   getAllAttendanceRecords,
-  exportAttendanceData,
   getFingerprintRoster,
   markAttendanceByFingerprint,
   getTeacherAbsenteesByDate,
+  setAbsenceStatusByTeacher,
 } from "@/app/actions/attendance-actions"
 import { getUserProfile, logout } from "@/app/actions/auth-actions"
 import { useToast } from "@/hooks/use-toast"
@@ -51,19 +51,51 @@ export default function TeacherDashboard() {
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
   const [fingerprintRoster, setFingerprintRoster] = useState<FingerprintStudent[]>([])
   const [absentees, setAbsentees] = useState<
-    { studentName: string; rollNumber: string; subject: string; date: string; status: string }[]
+    { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave" }[]
   >([])
   const [absenteeDate, setAbsenteeDate] = useState<Date | undefined>(new Date())
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
+  const [savingAbsenceKey, setSavingAbsenceKey] = useState<string | null>(null)
+  const [lastScannedFingerprintId, setLastScannedFingerprintId] = useState("")
+
+  const rosterIsMock = fingerprintRoster.length === 0
+  const mockRoster: FingerprintStudent[] = [
+    { name: "Demo Student A", rollNumber: "S-001", fingerprintId: "1" },
+    { name: "Demo Student B", rollNumber: "S-002", fingerprintId: "2" },
+    { name: "Demo Student C", rollNumber: "S-003", fingerprintId: "3" },
+    { name: "Demo Student D", rollNumber: "S-004", fingerprintId: "4" },
+  ]
+  const rosterToRender = rosterIsMock ? mockRoster : fingerprintRoster
+
+  function toDateKey(value: unknown) {
+    if (!value) return null
+    const parsed = new Date(String(value))
+    if (!Number.isNaN(parsed.getTime())) return format(parsed, "yyyy-MM-dd")
+    const raw = String(value)
+      .trim()
+      .replaceAll("/", "-")
+    if (raw.length >= 10) return raw.slice(0, 10)
+    return null
+  }
+
+  const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null
+  const recordsForSelectedDate = selectedDateKey
+    ? attendanceRecords.filter((record) => toDateKey(record.date) === selectedDateKey)
+    : attendanceRecords
+  const presentCount = recordsForSelectedDate.filter((record) => record.status === "present").length
+  const lateCount = recordsForSelectedDate.filter((record) => record.status === "late").length
+  const seriousLateCount = recordsForSelectedDate.filter((record) => record.status === "serious late").length
+  const absenteeAbsentCount = absentees.filter((item) => item.status === "absent").length
+  const absenteeLeaveCount = absentees.filter((item) => item.status === "leave").length
 
   useEffect(() => {
     async function checkTeacherAuth() {
       try {
         const profile = await getUserProfile()
-        if (!profile.success || profile.data.role !== "teacher") {
+        if (!profile.success || !profile.data || profile.data.role !== "teacher") {
           toast({
             title: "Access Denied",
             description: "You must be a teacher to access this page",
@@ -77,20 +109,27 @@ export default function TeacherDashboard() {
         setTeacherSubjects(profile.data.subjects ?? [])
 
         const records = await getAllAttendanceRecords()
-        if (records.success) {
+        if (records.success && records.data) {
           setAttendanceRecords(records.data)
           setFilteredRecords(records.data)
+        } else {
+          setAttendanceRecords([])
+          setFilteredRecords([])
         }
 
         const roster = await getFingerprintRoster()
-        if (roster.success) {
+        if (roster.success && roster.data) {
           setFingerprintRoster(roster.data)
+        } else {
+          setFingerprintRoster([])
         }
 
         const today = format(new Date(), "yyyy-MM-dd")
         const absenteeData = await getTeacherAbsenteesByDate({ date: today })
-        if (absenteeData.success) {
+        if (absenteeData.success && absenteeData.data) {
           setAbsentees(absenteeData.data)
+        } else {
+          setAbsentees([])
         }
       } catch (error) {
         toast({
@@ -119,7 +158,7 @@ export default function TeacherDashboard() {
 
     if (selectedDate) {
       const dateString = format(selectedDate, "yyyy-MM-dd")
-      filtered = filtered.filter((record) => record.date.startsWith(dateString))
+      filtered = filtered.filter((record) => toDateKey(record.date) === dateString)
     }
 
     setFilteredRecords(filtered)
@@ -130,7 +169,7 @@ export default function TeacherDashboard() {
       if (!absenteeDate) return
       const selected = format(absenteeDate, "yyyy-MM-dd")
       const result = await getTeacherAbsenteesByDate({ date: selected })
-      if (result.success) {
+      if (result.success && result.data) {
         setAbsentees(result.data)
       }
     }
@@ -141,22 +180,30 @@ export default function TeacherDashboard() {
   async function handleExportData() {
     setIsExporting(true)
     try {
-      const result = await exportAttendanceData({
-        date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : undefined,
-      })
+      const date = selectedDate ? format(selectedDate, "yyyy-MM-dd") : undefined
+      const courseName = teacherSubjects.length === 1 ? teacherSubjects[0] : teacherSubjects[0]
 
-      if (result.success) {
-        toast({
-          title: "Export Successful",
-          description: "Attendance data has been exported",
-        })
-      } else {
+      if (!courseName) {
         toast({
           title: "Export Failed",
-          description: result.error || "Failed to export attendance data",
+          description: "No subject assigned to export",
           variant: "destructive",
         })
+        return
       }
+
+      const params = new URLSearchParams()
+      params.set("courseName", courseName)
+      if (date) params.set("date", date)
+      params.set("format", "csv")
+
+      // Use a Next.js API proxy route so cookies/Authorization are handled server-side.
+      window.location.href = `/api/attendance/export?${params.toString()}`
+
+      toast({
+        title: "Export Started",
+        description: "Your download should start automatically",
+      })
     } catch (error) {
       toast({
         title: "Export Failed",
@@ -169,18 +216,27 @@ export default function TeacherDashboard() {
   }
 
   async function handleFingerprintScan(fingerprintId: string) {
+    if (rosterIsMock) {
+      toast({
+        title: "Mock Data",
+        description: "This is demo data. Connect backend roster to mark attendance.",
+        variant: "destructive",
+      })
+      return
+    }
     setIsScanning(true)
+    setLastScannedFingerprintId(fingerprintId)
     try {
       const result = await markAttendanceByFingerprint({ fingerprintId })
 
       if (result.success) {
         toast({
           title: "Fingerprint Accepted",
-          description: result.message || "Attendance marked",
+          description: `${result.message || "Attendance marked"} (ID: ${fingerprintId})`,
         })
 
         const records = await getAllAttendanceRecords()
-        if (records.success) {
+        if (records.success && records.data) {
           setAttendanceRecords(records.data)
           setFilteredRecords(records.data)
         }
@@ -208,6 +264,40 @@ export default function TeacherDashboard() {
     router.push("/login?role=teacher")
   }
 
+  async function handleAbsenceStatusChange(
+    item: { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave" },
+    status: "absent" | "leave",
+  ) {
+    const rowKey = `${item.rollNumber}-${item.subject}-${item.date}`
+    setSavingAbsenceKey(rowKey)
+    try {
+      const result = await setAbsenceStatusByTeacher({
+        rollNumber: item.rollNumber,
+        subject: item.subject,
+        date: item.date,
+        status,
+      })
+      if (!result.success) {
+        toast({
+          title: "Update Failed",
+          description: result.error || "Failed to update status",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setAbsentees((prev) =>
+        prev.map((entry) =>
+          entry.rollNumber === item.rollNumber && entry.subject === item.subject && entry.date === item.date
+            ? { ...entry, status }
+            : entry,
+        ),
+      )
+    } finally {
+      setSavingAbsenceKey(null)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -231,6 +321,68 @@ export default function TeacherDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Students</CardDescription>
+              <CardTitle className="text-2xl">{rosterToRender.length}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">
+              {teacherSubjects[0] ? `Subject: ${teacherSubjects[0]}` : "No subject assigned"}
+              {rosterIsMock ? " (mock)" : ""}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Records</CardDescription>
+              <CardTitle className="text-2xl">{recordsForSelectedDate.length}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">
+              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "All dates"}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Present</CardDescription>
+              <CardTitle className="text-2xl text-green-700">{presentCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Late</CardDescription>
+              <CardTitle className="text-2xl text-yellow-700">{lateCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Serious Late</CardDescription>
+              <CardTitle className="text-2xl text-red-700">{seriousLateCount}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Absentees</CardDescription>
+              <CardTitle className="text-2xl">
+                {absentees.length}
+                <span className="ml-2 text-sm font-normal text-gray-500">
+                  ({absenteeAbsentCount} absent, {absenteeLeaveCount} leave)
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">
+              {absenteeDate ? `Date: ${format(absenteeDate, "PPP")}` : "Pick a date"}
+            </CardContent>
+          </Card>
+        </div>
+
         <Tabs defaultValue="attendance" className="space-y-6">
           <TabsList className="grid w-full max-w-2xl grid-cols-4">
             <TabsTrigger value="fingerprint">Fingerprint Scan</TabsTrigger>
@@ -251,9 +403,24 @@ export default function TeacherDashboard() {
                     <span className="font-medium text-gray-800">Current Subject: </span>
                     {teacherSubjects[0] || "Not assigned"}
                   </div>
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium text-gray-800">Students in subject: </span>
+                    {rosterToRender.length}
+                    {rosterIsMock ? <span className="ml-2 text-xs text-gray-500">(mock)</span> : null}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium text-gray-800">Last scanned fingerprint ID: </span>
+                    {lastScannedFingerprintId || "-"}
+                  </div>
+
+                  {fingerprintRoster.length === 0 ? (
+                    <div className="rounded-md border bg-white p-4 text-sm text-gray-600">
+                      No roster from backend yet, showing demo students so the UI is not empty.
+                    </div>
+                  ) : null}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {fingerprintRoster.map((student) => (
+                    {rosterToRender.map((student) => (
                       <Button
                         key={student.fingerprintId}
                         variant="outline"
@@ -268,6 +435,7 @@ export default function TeacherDashboard() {
                         <div className="text-left">
                           <p className="font-medium">{student.name}</p>
                           <p className="text-xs text-gray-500">{student.rollNumber}</p>
+                          <p className="text-xs text-gray-500">ID: {student.fingerprintId}</p>
                         </div>
                       </Button>
                     ))}
@@ -319,7 +487,7 @@ export default function TeacherDashboard() {
                             className="w-full justify-start text-left font-normal sm:w-[200px]"
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+                            {selectedDate ? format(selectedDate, "PPP") : "All Dates"}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
@@ -433,6 +601,9 @@ export default function TeacherDashboard() {
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                           </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Action
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -442,14 +613,31 @@ export default function TeacherDashboard() {
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.rollNumber}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.studentName}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.subject}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-medium">
-                                Absent
+                              <td
+                                className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                                  item.status === "leave" ? "text-blue-700" : "text-red-700"
+                                }`}
+                              >
+                                {item.status === "leave" ? "Leave" : "Absent"}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <select
+                                  className="h-9 rounded-md border px-2"
+                                  value={item.status}
+                                  disabled={savingAbsenceKey === `${item.rollNumber}-${item.subject}-${item.date}`}
+                                  onChange={(e) =>
+                                    handleAbsenceStatusChange(item, e.target.value as "absent" | "leave")
+                                  }
+                                >
+                                  <option value="absent">Absent</option>
+                                  <option value="leave">Leave</option>
+                                </select>
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
                               No absentees for selected date
                             </td>
                           </tr>

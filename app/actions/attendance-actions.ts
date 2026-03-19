@@ -1,5 +1,6 @@
 "use server"
 
+import { cookies } from "next/headers"
 import { getUserProfile } from "./auth-actions"
 import type { AttendanceRecord } from "@/app/types"
 
@@ -9,62 +10,192 @@ interface FingerprintStudent {
   fingerprintId: string
 }
 
-const SUBJECTS = ["CRP", "IOT", "BPS", "WDD"] as const
+type AbsenceStatus = "absent" | "leave"
 
-const students: FingerprintStudent[] = [
-  { name: "Shinn Khant Aung", rollNumber: "20260000001", fingerprintId: "FP-0001" },
-  { name: "Swan Pyae Aung", rollNumber: "20260000002", fingerprintId: "FP-0002" },
-  { name: "Thet Myat Noe", rollNumber: "20260000003", fingerprintId: "FP-0003" },
-  { name: "Myat Thu Kha", rollNumber: "20260000004", fingerprintId: "FP-0004" },
-]
-
-const attendanceRecords: AttendanceRecord[] = [
-  {
-    id: 1,
-    studentName: "Shinn Khant Aung",
-    rollNumber: "20260000001",
-    subject: "CRP",
-    teacherEmail: "alice.teacher@example.com",
-    date: "2025-03-11T08:00:00.000Z",
-    status: "present",
-  },
-  {
-    id: 2,
-    studentName: "Thet Myat Noe",
-    rollNumber: "20260000003",
-    subject: "BPS",
-    teacherEmail: "carol.teacher@example.com",
-    date: "2025-03-11T08:20:00.000Z",
-    status: "late",
-  },
-]
-
-const teacherBySubject: Record<string, string> = {
-  CRP: "alice.teacher@example.com",
-  IOT: "bob.teacher@example.com",
-  BPS: "carol.teacher@example.com",
-  WDD: "david.teacher@example.com",
+interface BackendResponse<T = unknown> {
+  success?: boolean
+  message?: string
+  error?: string
+  data?: T
 }
 
-function getAttendanceStatusByTime(scanTime: Date): AttendanceRecord["status"] {
-  const minutesFromMidnight = scanTime.getHours() * 60 + scanTime.getMinutes()
-  const presentCutoff = 8 * 60 + 10 // 08:10
-  const lateCutoff = 8 * 60 + 30 // 08:30
+const SERVICE_URL = (process.env.SERVICE_URL ?? "http://localhost:8000").replace(/\/+$/, "")
 
-  if (minutesFromMidnight <= presentCutoff) return "present"
-  if (minutesFromMidnight <= lateCutoff) return "late"
-  return "serious late"
+const FINGERPRINT_ROSTER_PATH = process.env.FINGERPRINT_ROSTER_PATH ?? "/api/attendance/fingerprint-roster"
+const MARK_FINGERPRINT_PATH = process.env.MARK_FINGERPRINT_PATH ?? "/api/attendance/fingerprint/mark"
+const TEACHER_ABSENTEES_PATH = process.env.TEACHER_ABSENTEES_PATH ?? "/api/attendance/teacher/absentees"
+const STUDENT_ABSENTEEISM_PATH = process.env.STUDENT_ABSENTEEISM_PATH ?? "/api/attendance/student/absenteeism"
+const STUDENT_HISTORY_PATH = process.env.STUDENT_HISTORY_PATH ?? "/api/attendance/student/history"
+const TEACHER_RECORDS_PATH = process.env.TEACHER_RECORDS_PATH ?? "/api/attendance/teacher/records"
+const EXPORT_ATTENDANCE_PATH = process.env.EXPORT_ATTENDANCE_PATH ?? "/api/attendance/export"
+const SET_ABSENCE_STATUS_PATH = process.env.SET_ABSENCE_STATUS_PATH ?? "/api/attendance/absence-status"
+
+function getApiUrl(path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+  return `${SERVICE_URL}${normalizedPath}`
 }
 
-function isFutureDate(date: string): boolean {
-  const today = new Date().toISOString().split("T")[0]
-  return date > today
+function pickData<T>(payload: any): T {
+  const direct =
+    payload?.data ??
+    payload?.records ??
+    payload?.result ??
+    payload?.items ??
+    payload?.attendances ??
+    payload?.attendance ??
+    payload?.history ??
+    payload?.rows
+
+  if (direct !== undefined) {
+    if (Array.isArray(direct)) {
+      return direct as T
+    }
+    if (direct && typeof direct === "object") {
+      const nestedArray = Object.values(direct).find((value) => Array.isArray(value))
+      if (nestedArray) {
+        return nestedArray as T
+      }
+      return [direct] as T
+    }
+    return [] as T
+  }
+
+  if (Array.isArray(payload)) {
+    return payload as T
+  }
+
+  if (payload && typeof payload === "object") {
+    const firstArray = Object.values(payload).find((value) => Array.isArray(value))
+    if (firstArray) {
+      return firstArray as T
+    }
+  }
+
+  return [] as T
 }
 
-function hasAttendance(rollNumber: string, subject: string, date: string) {
-  return attendanceRecords.some(
-    (record) => record.rollNumber === rollNumber && record.subject === subject && record.date.startsWith(date),
-  )
+async function callBackend<T>({
+  paths,
+  method = "GET",
+  body,
+}: {
+  paths: string[]
+  method?: "GET" | "POST"
+  body?: unknown
+}): Promise<{ success: true; data: T; message?: string } | { success: false; error: string }> {
+  const cookieStore = await cookies()
+  const authToken = cookieStore.get("authToken")?.value
+  let lastError = "Backend request failed"
+
+  for (const path of paths) {
+    const response = await fetch(getApiUrl(path), {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: "no-store",
+    })
+
+    let payload: BackendResponse<T> | null = null
+    try {
+      payload = (await response.json()) as BackendResponse<T>
+    } catch {
+      payload = null
+    }
+
+    if (response.status === 400 || response.status === 404 || response.status === 405 || response.status === 415 || response.status === 422) {
+      continue
+    }
+
+    const routeMissingMessage = `${payload?.message ?? ""} ${payload?.error ?? ""}`.toLowerCase()
+    if (routeMissingMessage.includes("route not found") || routeMissingMessage.includes("not found")) {
+      continue
+    }
+
+    if (response.ok && payload?.success !== false) {
+      return {
+        success: true,
+        data: pickData<T>(payload),
+        message: payload?.message,
+      }
+    }
+
+    lastError = payload?.message || payload?.error || `Backend request failed (${response.status})`
+  }
+
+  return { success: false, error: lastError }
+}
+
+function mapAttendanceRecord(item: any, index: number): AttendanceRecord {
+  const rawStatus = String(item?.status ?? "present")
+    .trim()
+    .toLowerCase()
+  const normalizedStatus: AttendanceRecord["status"] =
+    rawStatus === "serious late" || rawStatus === "serious_late" || rawStatus === "serious-late"
+      ? "serious late"
+      : rawStatus === "absent"
+        ? "absent"
+      : rawStatus === "late"
+        ? "late"
+        : "present"
+
+  const subject =
+    item?.subject ??
+    item?.subject_name ??
+    item?.courseName ??
+    item?.course_name ??
+    item?.course?.name ??
+    item?.course_title ??
+    (item?.course_id ? String(item.course_id) : "")
+
+  const baseDate = item?.date ?? item?.check_date ?? item?.created_at ?? ""
+  const checkTime = item?.check_time ?? item?.time ?? ""
+  const date =
+    typeof baseDate === "string" && baseDate && checkTime && !baseDate.includes("T")
+      ? `${baseDate}T${checkTime}`
+      : String(baseDate)
+
+  return {
+    id: Number(item?.id ?? index + 1),
+    studentName: String(item?.studentName ?? item?.student_name ?? item?.student?.name ?? item?.name ?? ""),
+    rollNumber: String(
+      item?.rollNumber ?? item?.roll_number ?? item?.studentRollNumber ?? item?.student_roll_number ?? item?.student?.rollNumber ?? item?.student?.roll_number ?? "",
+    ),
+    subject: String(subject),
+    teacherEmail: String(item?.teacherEmail ?? item?.teacher_email ?? item?.teacher?.email ?? ""),
+    date,
+    status: normalizedStatus,
+  }
+}
+
+function mapFingerprintStudent(item: any): FingerprintStudent {
+  return {
+    name: String(item?.name ?? ""),
+    rollNumber: String(item?.rollNumber ?? item?.roll_number ?? ""),
+    fingerprintId: String(item?.fingerprintId ?? item?.fingerprint_id ?? ""),
+  }
+}
+
+function mapAbsence(
+  item: any,
+): {
+  studentName: string
+  rollNumber: string
+  subject: string
+  date: string
+  status: AbsenceStatus
+} {
+  const rawStatus = String(item?.status ?? "absent").toLowerCase()
+  const status: AbsenceStatus = rawStatus === "leave" ? "leave" : "absent"
+  return {
+    studentName: String(item?.studentName ?? item?.student_name ?? item?.name ?? ""),
+    rollNumber: String(item?.rollNumber ?? item?.roll_number ?? ""),
+    subject: String(item?.subject ?? ""),
+    date: String(item?.date ?? ""),
+    status,
+  }
 }
 
 export async function markAttendance() {
@@ -77,266 +208,302 @@ export async function markAttendance() {
 export async function getFingerprintRoster() {
   try {
     const profile = await getUserProfile()
-    if (!profile.success || profile.data.role !== "teacher") {
-      return {
-        success: false,
-        error: "Not authorized",
-      }
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
     }
+
+    const courseName = (profile.data.subjects ?? [])[0]
+    if (!courseName) {
+      return { success: true, data: [] }
+    }
+
+    const qs = `?courseName=${encodeURIComponent(courseName)}`
+    const result = await callBackend<any[]>({
+      paths: [
+        `${FINGERPRINT_ROSTER_PATH}${qs}`,
+        `/api/attendance/fingerprint-roster${qs}`,
+        `/api/attendance/fingerprint/roster${qs}`,
+      ],
+    })
+    if (!result.success) return result
 
     return {
       success: true,
-      data: students,
+      data: (result.data ?? []).map(mapFingerprintStudent),
     }
   } catch (error) {
     console.error("Get fingerprint roster error:", error)
-    return {
-      success: false,
-      error: "Failed to load fingerprint roster",
-    }
+    return { success: false, error: "Failed to load fingerprint roster" }
   }
 }
 
-export async function markAttendanceByFingerprint({
-  fingerprintId,
-}: {
-  fingerprintId: string
-}) {
+export async function markAttendanceByFingerprint({ fingerprintId }: { fingerprintId: string }) {
   try {
     const profile = await getUserProfile()
-
-    if (!profile.success || profile.data.role !== "teacher") {
-      return {
-        success: false,
-        error: "Not authorized",
-      }
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
     }
 
-    const subject = profile.data.subjects?.[0]
-    if (!subject) {
-      return {
-        success: false,
-        error: "No subject assigned to teacher",
-      }
-    }
-
-    const student = students.find((s) => s.fingerprintId === fingerprintId)
-    if (!student) {
-      return {
-        success: false,
-        error: "Fingerprint not recognized",
-      }
-    }
-
-    const today = new Date().toISOString().split("T")[0]
-    const alreadyMarked = hasAttendance(student.rollNumber, subject, today)
-
-    if (alreadyMarked) {
-      return {
-        success: false,
-        error: `${student.name} already marked for ${subject} today`,
-      }
-    }
-
-    const scanTime = new Date()
-    const status = getAttendanceStatusByTime(scanTime)
-
-    attendanceRecords.push({
-      id: attendanceRecords.length + 1,
-      studentName: student.name,
-      rollNumber: student.rollNumber,
-      subject,
-      teacherEmail: profile.data.email,
-      date: scanTime.toISOString(),
-      status,
+    const courseName = (profile.data.subjects ?? [])[0]
+    const result = await callBackend<unknown>({
+      paths: [MARK_FINGERPRINT_PATH, "/api/attendance/fingerprint/mark"],
+      method: "POST",
+      body: { fingerprintId, fingerprint_id: fingerprintId, courseName },
     })
 
-    return {
-      success: true,
-      message: `${student.name} marked ${status} for ${subject}`,
-    }
+    if (!result.success) return result
+    return { success: true, message: result.message || "Attendance marked" }
   } catch (error) {
     console.error("Mark attendance by fingerprint error:", error)
-    return {
-      success: false,
-      error: "Failed to mark attendance",
-    }
+    return { success: false, error: "Failed to mark attendance" }
   }
 }
 
-export async function getTeacherAbsenteesByDate({
-  date,
-}: {
-  date: string
-}) {
+export async function getTeacherAbsenteesByDate({ date }: { date: string }) {
   try {
     const profile = await getUserProfile()
-    if (!profile.success || profile.data.role !== "teacher") {
-      return {
-        success: false,
-        error: "Not authorized",
-      }
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
     }
 
-    if (!date || isFutureDate(date)) {
-      return {
-        success: true,
-        data: [],
-      }
-    }
+    const result = await callBackend<any[]>({
+      paths: [TEACHER_ABSENTEES_PATH, "/api/attendance/teacher/absentees"],
+      method: "POST",
+      body: { date },
+    })
+    if (!result.success) return result
 
-    const teacherSubjects = profile.data.subjects ?? []
-    const absentees = students.flatMap((student) =>
-      teacherSubjects
-        .filter((subject) => !hasAttendance(student.rollNumber, subject, date))
-        .map((subject) => ({
-          studentName: student.name,
-          rollNumber: student.rollNumber,
-          subject,
-          date,
-          status: "absent",
-        })),
-    )
-
-    return {
-      success: true,
-      data: absentees,
-    }
+    return { success: true, data: (result.data ?? []).map(mapAbsence) }
   } catch (error) {
     console.error("Get teacher absentees error:", error)
-    return {
-      success: false,
-      error: "Failed to load absentees",
-    }
+    return { success: false, error: "Failed to load absentees" }
   }
 }
 
-export async function getStudentAbsenteeismByDate({
-  date,
-}: {
-  date: string
-}) {
+export async function getStudentAbsenteeismByDate({ date }: { date: string }) {
   try {
     const profile = await getUserProfile()
-    if (!profile.success || profile.data.role !== "student") {
-      return {
-        success: false,
-        error: "Not authorized",
-      }
+    if (!profile.success || !profile.data || profile.data.role !== "student") {
+      return { success: false, error: "Not authorized" }
     }
 
-    if (!date || isFutureDate(date)) {
-      return {
-        success: true,
-        data: [],
-      }
-    }
-
-    const absences = SUBJECTS.filter((subject) => !hasAttendance(profile.data.rollNumber, subject, date)).map(
-      (subject) => ({
-        subject,
-        date,
-        status: "absent",
-      }),
-    )
+    const result = await callBackend<any[]>({
+      paths: [STUDENT_ABSENTEEISM_PATH, "/api/attendance/student/absenteeism"],
+      method: "POST",
+      body: { date },
+    })
+    if (!result.success) return result
 
     return {
       success: true,
-      data: absences,
+      data: (result.data ?? []).map((item) => {
+        const rawStatus = String(item?.status ?? "absent").toLowerCase()
+        return {
+          subject: String(item?.subject ?? ""),
+          date: String(item?.date ?? date),
+          status: (rawStatus === "leave" ? "leave" : "absent") as AbsenceStatus,
+        }
+      }),
     }
   } catch (error) {
     console.error("Get student absenteeism error:", error)
-    return {
-      success: false,
-      error: "Failed to load absenteeism",
+    return { success: false, error: "Failed to load absenteeism" }
+  }
+}
+
+export async function setAbsenceStatusByTeacher({
+  rollNumber,
+  subject,
+  date,
+  status,
+}: {
+  rollNumber: string
+  subject: string
+  date: string
+  status: AbsenceStatus
+}) {
+  try {
+    const profile = await getUserProfile()
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
     }
+
+    const result = await callBackend<unknown>({
+      paths: [SET_ABSENCE_STATUS_PATH, "/api/attendance/absence-status"],
+      method: "POST",
+      body: { rollNumber, roll_number: rollNumber, subject, date, status },
+    })
+    if (!result.success) return result
+
+    return { success: true }
+  } catch (error) {
+    console.error("Set absence status error:", error)
+    return { success: false, error: "Failed to update absence status" }
   }
 }
 
 export async function getStudentAttendanceHistory() {
   try {
     const profile = await getUserProfile()
+    if (!profile.success || !profile.data) {
+      return { success: false, error: "Not authenticated" }
+    }
 
-    if (!profile.success) {
-      return {
-        success: false,
-        error: "Not authenticated",
+    const profileUserId = (profile.data as any).userId
+    const studentFilters = {
+      email: profile.data.email,
+      rollNumber: profile.data.rollNumber,
+      roll_number: profile.data.rollNumber,
+      studentId: profileUserId,
+      student_id: profileUserId,
+      userId: profileUserId,
+      user_id: profileUserId,
+    }
+
+    let result = await callBackend<any[]>({
+      paths: [
+        STUDENT_HISTORY_PATH,
+        "/api/attendance/student/history",
+        "/api/student/attendance-history",
+        "/api/student/attendances",
+        "/api/attendance/history",
+      ],
+    })
+    if (!result.success) return result
+
+    if ((result.data ?? []).length === 0) {
+      const postResult = await callBackend<any[]>({
+        paths: [
+          STUDENT_HISTORY_PATH,
+          "/api/attendance/student/history",
+          "/api/attendance/history",
+          "/api/attendance/list",
+          "/api/attendances",
+        ],
+        method: "POST",
+        body: studentFilters,
+      })
+      if (postResult.success) {
+        result = postResult
       }
     }
 
-    const records = attendanceRecords.filter((record) => record.rollNumber === profile.data.rollNumber)
-    records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-    return {
-      success: true,
-      data: records,
+    let sourceRows = result.data ?? []
+    if (sourceRows.length === 0) {
+      const genericResult = await callBackend<any[]>({
+        paths: ["/api/attendances", "/api/attendance/list", "/api/attendance/records"],
+      })
+      if (genericResult.success) {
+        sourceRows = (genericResult.data ?? []).filter((row) => {
+          const rowStudentId = row?.student_id ?? row?.studentId ?? row?.student?.id
+          const rowRoll = row?.roll_number ?? row?.rollNumber ?? row?.student?.roll_number ?? row?.student?.rollNumber
+          return (
+            (profileUserId && String(rowStudentId) === String(profileUserId)) ||
+            (profile.data.rollNumber && String(rowRoll) === String(profile.data.rollNumber))
+          )
+        })
+      }
     }
+
+    const records = sourceRows.map(mapAttendanceRecord).map((record) => {
+      if (!record.subject && (profile.data?.subjects ?? []).length === 1) {
+        return { ...record, subject: profile.data.subjects![0] }
+      }
+      return record
+    })
+    records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return { success: true, data: records }
   } catch (error) {
     console.error("Get attendance history error:", error)
-    return {
-      success: false,
-      error: "Failed to get attendance history",
-    }
+    return { success: false, error: "Failed to get attendance history" }
   }
 }
 
 export async function getAllAttendanceRecords() {
   try {
     const profile = await getUserProfile()
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
+    }
 
-    if (!profile.success || profile.data.role !== "teacher") {
-      return {
-        success: false,
-        error: "Not authorized",
+    const profileUserId = (profile.data as any).userId
+
+    let result = await callBackend<any[]>({
+      paths: [TEACHER_RECORDS_PATH, "/api/attendance/teacher/records", "/api/teacher/attendance-records"],
+    })
+
+    if (!result.success) {
+      const postResult = await callBackend<any[]>({
+        paths: [TEACHER_RECORDS_PATH, "/api/attendance/teacher/records", "/api/attendance/records", "/api/attendance/list"],
+        method: "POST",
+        body: {
+          email: profile.data.email,
+          teacherEmail: profile.data.email,
+          teacher_email: profile.data.email,
+          teacherId: profileUserId,
+          teacher_id: profileUserId,
+          userId: profileUserId,
+          user_id: profileUserId,
+        },
+      })
+      if (!postResult.success) return result
+      result = postResult
+    }
+
+    let sourceRows = result.data ?? []
+    if (sourceRows.length === 0) {
+      const genericResult = await callBackend<any[]>({
+        paths: ["/api/attendances", "/api/attendance/list", "/api/attendance/records"],
+      })
+      if (genericResult.success) {
+        sourceRows = genericResult.data ?? []
       }
     }
 
-    const teacherRecords = attendanceRecords.filter((record) => record.teacherEmail === profile.data.email)
-    const sortedRecords = [...teacherRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    const records = sourceRows.map(mapAttendanceRecord)
+    const normalizedSubjects = (profile.data.subjects ?? [])
+      .map((subject: string) => String(subject).trim().toLowerCase())
+      .filter(Boolean)
 
-    return {
-      success: true,
-      data: sortedRecords,
-    }
+    const filteredByTeacher = records.filter((record) => {
+      const subjectIsUnknown = !record.subject || /^\d+$/.test(record.subject)
+      const subjectMatch =
+        subjectIsUnknown ||
+        normalizedSubjects.length === 0 ||
+        normalizedSubjects.includes(String(record.subject).trim().toLowerCase())
+      const emailMatch = !record.teacherEmail || record.teacherEmail === profile.data.email
+      return subjectMatch && emailMatch
+    })
+
+    const resultRows = filteredByTeacher.length === 0 && records.length > 0 ? records : filteredByTeacher
+    resultRows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return { success: true, data: resultRows }
   } catch (error) {
     console.error("Get all attendance records error:", error)
-    return {
-      success: false,
-      error: "Failed to get attendance records",
-    }
+    return { success: false, error: "Failed to get attendance records" }
   }
 }
 
-export async function exportAttendanceData({
-  date,
-}: {
-  date?: string
-}) {
+export async function exportAttendanceData({ date }: { date?: string }) {
   try {
     const profile = await getUserProfile()
-
-    if (!profile.success || profile.data.role !== "teacher") {
-      return {
-        success: false,
-        error: "Not authorized",
-      }
+    if (!profile.success || !profile.data || profile.data.role !== "teacher") {
+      return { success: false, error: "Not authorized" }
     }
 
-    let filteredRecords = attendanceRecords.filter((record) => record.teacherEmail === profile.data.email)
-
-    if (date) {
-      filteredRecords = filteredRecords.filter((record) => record.date.startsWith(date))
-    }
+    const result = await callBackend<unknown>({
+      paths: [EXPORT_ATTENDANCE_PATH, "/api/attendance/export"],
+      method: "POST",
+      body: { date },
+    })
+    if (!result.success) return result
 
     return {
       success: true,
-      message: `Exported ${filteredRecords.length} records`,
+      message: result.message || "Export completed",
     }
   } catch (error) {
     console.error("Export attendance data error:", error)
-    return {
-      success: false,
-      error: "Failed to export attendance data",
-    }
+    return { success: false, error: "Failed to export attendance data" }
   }
 }

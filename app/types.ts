@@ -5,7 +5,7 @@ export interface AttendanceRecord {
   subject: string
   teacherEmail: string
   date: string
-  status: "present" | "late" | "serious late"
+  status: "present" | "late" | "serious late" | "absent"
 }
 
 export interface User {

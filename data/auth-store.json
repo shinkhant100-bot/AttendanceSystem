@@ -1,0 +1,147 @@
+{
+  "users": [
+    {
+      "id": 10,
+      "name": "Sa yarr",
+      "email": "sayar@gmail.com",
+      "phone": "",
+      "password": "123456",
+      "rollNumber": "",
+      "role": "teacher",
+      "subjects": []
+    },
+    {
+      "id": 11,
+      "name": "Sayar Shinn",
+      "email": "sayar1@gmail.com",
+      "phone": "",
+      "password": "123456",
+      "rollNumber": "",
+      "role": "teacher",
+      "subjects": [
+        "ANIME",
+        "CRP"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Shinn Khant Aung",
+      "email": "shinkhant100@gmail.com",
+      "password": "shinnkhant28",
+      "rollNumber": "20260000005",
+      "phone": "",
+      "fingerprintId": "1",
+      "role": "student",
+      "subjects": [
+        "ANIME",
+        "CRP"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Swan Pyae",
+      "email": "SP@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000006",
+      "phone": "",
+      "fingerprintId": "2",
+      "role": "student",
+      "subjects": [
+        "ANIME",
+        "CRP"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Myat thu Kha",
+      "email": "mtk@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000007",
+      "phone": "",
+      "fingerprintId": "3",
+      "role": "student",
+      "subjects": [
+        "ANIME"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Thet Myat Noe",
+      "email": "tmn@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000008",
+      "phone": "",
+      "fingerprintId": "4",
+      "role": "student",
+      "subjects": [
+        "ANIME"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "JIJI",
+      "email": "JI@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000009",
+      "phone": "",
+      "fingerprintId": "5",
+      "role": "student",
+      "subjects": []
+    },
+    {
+      "id": 8,
+      "name": "JJ",
+      "email": "J@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000010",
+      "phone": "",
+      "fingerprintId": "6",
+      "role": "student",
+      "subjects": []
+    },
+    {
+      "id": 9,
+      "name": "SKA",
+      "email": "SKA@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000011",
+      "phone": "",
+      "fingerprintId": "7",
+      "role": "student",
+      "subjects": []
+    },
+    {
+      "id": 10,
+      "name": "JI",
+      "email": "j@gmail.com",
+      "password": "123456",
+      "rollNumber": "20260000012",
+      "phone": "",
+      "fingerprintId": "8",
+      "role": "student",
+      "subjects": []
+    }
+  ],
+  "courses": [
+    {
+      "id": 2,
+      "name": "ANIME",
+      "teacherEmail": "sayar1@gmail.com",
+      "studentRollNumbers": [
+        "20260000006",
+        "20260000007",
+        "20260000008",
+        "20260000005"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "CRP",
+      "teacherEmail": "sayar1@gmail.com",
+      "studentRollNumbers": [
+        "20260000005",
+        "20260000006"
+      ]
+    }
+  ]
+}

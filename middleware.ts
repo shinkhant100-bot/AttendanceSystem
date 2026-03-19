@@ -5,7 +5,11 @@ export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
 
   // Define public paths that don't require authentication
-  const isPublicPath = path === "/" || path === "/login" || path === "/register"
+  const isPublicPath = path === "/" || path === "/login"
+
+  if (path === "/register") {
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
 
   // Get the session cookie
   const sessionCookie = request.cookies.get("session")?.value
@@ -41,7 +45,7 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Allow logged-in users to access /login and /register so they can switch accounts.
+  // Allow logged-in users to access /login so they can switch accounts.
   // Route-level guards still protect /admin and /student pages.
 
   return NextResponse.next()
@@ -52,11 +56,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except:
+     * - api (API routes should handle auth themselves; redirects break downloads)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public files (public directory)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)",
   ],
 }

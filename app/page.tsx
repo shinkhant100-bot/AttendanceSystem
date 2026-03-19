@@ -10,10 +10,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-gray-900">Student Attendance System</h1>
           <div className="flex space-x-4">
             <Link href="/login">
-              <Button variant="outline">Login</Button>
-            </Link>
-            <Link href="/register">
-              <Button>Register</Button>
+              <Button>Login</Button>
             </Link>
           </div>
         </div>
@@ -29,12 +26,12 @@ export default function Home() {
             <CardContent>
               <p className="mb-4">Students can login with their credentials to mark their daily attendance.</p>
               <ul className="list-disc pl-5 space-y-2 mb-4">
-                <li>Simple attendance marking with just roll number and subject</li>
+                <li>Attendance is marked via fingerprint scan by teacher</li>
                 <li>View your attendance history</li>
-                <li>Secure login with email and roll number</li>
+                <li>Secure login with email and password</li>
               </ul>
-              <Link href="/register">
-                <Button className="w-full">Register as Student</Button>
+              <Link href="/login">
+                <Button className="w-full">Login as Student</Button>
               </Link>
             </CardContent>
           </Card>

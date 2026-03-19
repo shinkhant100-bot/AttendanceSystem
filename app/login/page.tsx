@@ -115,12 +115,9 @@ export default function LoginPage() {
                 Login as Teacher
               </Link>
             ) : (
-              <>
-                Don&apos;t have an account?{" "}
-                <Link href="/register" className="font-medium text-primary hover:text-primary/80">
-                  Register
-                </Link>
-              </>
+              <Link href="/login?role=teacher" className="font-medium text-primary hover:text-primary/80">
+                Login as Teacher
+              </Link>
             )}
           </p>
         </CardFooter>

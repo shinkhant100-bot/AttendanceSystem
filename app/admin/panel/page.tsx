@@ -37,6 +37,8 @@ interface StudentOption {
   email: string
 }
 
+const BATCH_OPTIONS = ["Batch-1", "Batch-2", "Batch-3", "Batch-4", "Batch-5"]
+
 export default function AdminPanelPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -46,6 +48,7 @@ export default function AdminPanelPage() {
   const [courses, setCourses] = useState<Course[]>([])
   const [teachers, setTeachers] = useState<TeacherOption[]>([])
   const [students, setStudents] = useState<StudentOption[]>([])
+  const [selectedBatch, setSelectedBatch] = useState(BATCH_OPTIONS[0])
 
   const [newCourseName, setNewCourseName] = useState("")
   const [selectedCourseForTeacher, setSelectedCourseForTeacher] = useState("")
@@ -56,20 +59,24 @@ export default function AdminPanelPage() {
   const [studentForm, setStudentForm] = useState({
     name: "",
     email: "",
-    rollNumber: "",
-    phone: "",
+    fingerprintId: "",
     password: "",
   })
-  const [teacherForm, setTeacherForm] = useState({
+  const [teacherForm, setTeacherForm] = useState<{
+    name: string
+    email: string
+    role: "teacher" | "admin"
+    password: string
+  }>({
     name: "",
     email: "",
-    phone: "",
+    role: "teacher",
     password: "",
   })
 
   async function loadAdminData() {
     const data = await getAdminPanelData()
-    if (data.success) {
+    if (data.success && data.data) {
       setCourses(data.data.courses)
       setTeachers(data.data.teachers)
       setStudents(data.data.students)
@@ -80,7 +87,7 @@ export default function AdminPanelPage() {
     async function boot() {
       try {
         const profile = await getUserProfile()
-        if (!profile.success || profile.data.role !== "admin") {
+        if (!profile.success || !profile.data || profile.data.role !== "admin") {
           toast({
             title: "Access Denied",
             description: "You must be an admin to access this page",
@@ -137,9 +144,12 @@ export default function AdminPanelPage() {
   }
 
   async function handleRegisterStudent() {
-    const result = await registerStudentByAdmin(studentForm)
+    const result = await registerStudentByAdmin({
+      ...studentForm,
+      fingerprintId: studentForm.fingerprintId.trim(),
+    })
     if (result.success) {
-      setStudentForm({ name: "", email: "", rollNumber: "", phone: "", password: "" })
+      setStudentForm({ name: "", email: "", fingerprintId: "", password: "" })
       await loadAdminData()
       toast({ title: "Success", description: "Student registered" })
     } else {
@@ -150,7 +160,7 @@ export default function AdminPanelPage() {
   async function handleRegisterTeacher() {
     const result = await registerTeacherByAdmin(teacherForm)
     if (result.success) {
-      setTeacherForm({ name: "", email: "", phone: "", password: "" })
+      setTeacherForm({ name: "", email: "", role: "teacher", password: "" })
       await loadAdminData()
       toast({ title: "Success", description: "Teacher registered" })
     } else {
@@ -176,7 +186,20 @@ export default function AdminPanelPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+          <div className="flex items-center gap-3">
+            <select
+              className="h-10 rounded-md border px-3 text-sm"
+              value={selectedBatch}
+              onChange={(e) => setSelectedBatch(e.target.value)}
+            >
+              {BATCH_OPTIONS.map((batch) => (
+                <option key={batch} value={batch}>
+                  {batch}
+                </option>
+              ))}
+            </select>
+            <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+          </div>
           <Button variant="outline" onClick={handleLogout}>
             Logout
           </Button>
@@ -280,13 +303,12 @@ export default function AdminPanelPage() {
                 value={studentForm.email}
                 onChange={(e) => setStudentForm({ ...studentForm, email: e.target.value })}
               />
-              <Label>Roll Number</Label>
+              <Label>Fingerprint ID</Label>
               <Input
-                value={studentForm.rollNumber}
-                onChange={(e) => setStudentForm({ ...studentForm, rollNumber: e.target.value })}
+                value={studentForm.fingerprintId}
+                placeholder=""
+                onChange={(e) => setStudentForm({ ...studentForm, fingerprintId: e.target.value })}
               />
-              <Label>Phone</Label>
-              <Input value={studentForm.phone} onChange={(e) => setStudentForm({ ...studentForm, phone: e.target.value })} />
               <Label>Password</Label>
               <Input
                 type="password"
@@ -310,8 +332,15 @@ export default function AdminPanelPage() {
                 value={teacherForm.email}
                 onChange={(e) => setTeacherForm({ ...teacherForm, email: e.target.value })}
               />
-              <Label>Phone</Label>
-              <Input value={teacherForm.phone} onChange={(e) => setTeacherForm({ ...teacherForm, phone: e.target.value })} />
+              <Label>Role</Label>
+              <select
+                className="h-10 rounded-md border px-3 w-full"
+                value={teacherForm.role}
+                onChange={(e) => setTeacherForm({ ...teacherForm, role: e.target.value as "teacher" | "admin" })}
+              >
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+              </select>
               <Label>Password</Label>
               <Input
                 type="password"
