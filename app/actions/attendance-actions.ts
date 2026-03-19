@@ -30,9 +30,49 @@ const TEACHER_RECORDS_PATH = process.env.TEACHER_RECORDS_PATH ?? "/api/attendanc
 const EXPORT_ATTENDANCE_PATH = process.env.EXPORT_ATTENDANCE_PATH ?? "/api/attendance/export"
 const SET_ABSENCE_STATUS_PATH = process.env.SET_ABSENCE_STATUS_PATH ?? "/api/attendance/absence-status"
 
+const USE_MOCK_DATA =
+  (process.env.USE_MOCK_DATA ?? process.env.NEXT_PUBLIC_USE_MOCK_DATA ?? "").toString().toLowerCase() === "true"
+
 function getApiUrl(path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   return `${SERVICE_URL}${normalizedPath}`
+}
+
+function buildMockAttendanceRecords(): AttendanceRecord[] {
+  const subject = "ANIME"
+  const teacherEmail = "teacher@example.com"
+  const students: Record<string, string> = {
+    "1": "Shinn Khant Aung",
+    "2": "Swan Pyae",
+    "3": "Myat thu Kha",
+    "4": "Thet Myat Noe",
+  }
+
+  const rows = [
+    { id: 23, studentId: "4", date: "2026-03-11", time: "20:31:04", status: "present" },
+    { id: 24, studentId: "1", date: "2026-03-12", time: "00:09:17", status: "present" },
+    { id: 25, studentId: "2", date: "2026-03-12", time: "13:46:29", status: "present" },
+    { id: 26, studentId: "3", date: "2026-03-14", time: "19:51:00", status: "present" },
+    { id: 27, studentId: "4", date: "2026-03-14", time: "19:51:17", status: "present" },
+    { id: 28, studentId: "2", date: "2026-03-14", time: "20:08:41", status: "present" },
+    { id: 29, studentId: "3", date: "2026-03-16", time: "15:38:27", status: "late" },
+    { id: 30, studentId: "4", date: "2026-03-16", time: "15:40:44", status: "present" },
+    { id: 31, studentId: "2", date: "2026-03-16", time: "15:40:51", status: "present" },
+    { id: 32, studentId: "2", date: "2026-03-18", time: "10:00:48", status: "present" },
+    { id: 33, studentId: "3", date: "2026-03-18", time: "10:02:28", status: "present" },
+    { id: 34, studentId: "1", date: "2026-03-18", time: "10:05:42", status: "present" },
+    { id: 35, studentId: "4", date: "2026-03-18", time: "10:36:56", status: "present" },
+  ] as const
+
+  return rows.map((row) => ({
+    id: row.id,
+    studentName: students[row.studentId] ?? `Student ${row.studentId}`,
+    rollNumber: row.studentId,
+    subject,
+    teacherEmail,
+    date: `${row.date}T${row.time}`,
+    status: row.status as AttendanceRecord["status"],
+  }))
 }
 
 function pickData<T>(payload: any): T {
@@ -207,6 +247,18 @@ export async function markAttendance() {
 
 export async function getFingerprintRoster() {
   try {
+    if (USE_MOCK_DATA) {
+      return {
+        success: true,
+        data: [
+          { name: "Shinn Khant Aung", rollNumber: "1", fingerprintId: "1" },
+          { name: "Swan Pyae", rollNumber: "2", fingerprintId: "2" },
+          { name: "Myat thu Kha", rollNumber: "3", fingerprintId: "3" },
+          { name: "Thet Myat Noe", rollNumber: "4", fingerprintId: "4" },
+        ],
+      }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "teacher") {
       return { success: false, error: "Not authorized" }
@@ -239,6 +291,10 @@ export async function getFingerprintRoster() {
 
 export async function markAttendanceByFingerprint({ fingerprintId }: { fingerprintId: string }) {
   try {
+    if (USE_MOCK_DATA) {
+      return { success: true, message: `Mock: attendance marked (ID: ${fingerprintId})` }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "teacher") {
       return { success: false, error: "Not authorized" }
@@ -259,8 +315,32 @@ export async function markAttendanceByFingerprint({ fingerprintId }: { fingerpri
   }
 }
 
-export async function getTeacherAbsenteesByDate({ date }: { date: string }) {
+export async function getTeacherAbsenteesByDate({ date, courseName }: { date: string; courseName?: string }) {
   try {
+    if (USE_MOCK_DATA) {
+      const dateKey = String(date).slice(0, 10)
+      const roster = [
+        { studentName: "Shinn Khant Aung", rollNumber: "1" },
+        { studentName: "Swan Pyae", rollNumber: "2" },
+        { studentName: "Myat thu Kha", rollNumber: "3" },
+        { studentName: "Thet Myat Noe", rollNumber: "4" },
+      ]
+      const records = buildMockAttendanceRecords().filter((r) => String(r.date).startsWith(dateKey))
+      const presentRolls = new Set(records.map((r) => r.rollNumber))
+      return {
+        success: true,
+        data: roster
+          .filter((s) => !presentRolls.has(s.rollNumber))
+          .map((s) => ({
+            studentName: s.studentName,
+            rollNumber: s.rollNumber,
+            subject: courseName ?? "ANIME",
+            date: dateKey,
+            status: "absent" as const,
+          })),
+      }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "teacher") {
       return { success: false, error: "Not authorized" }
@@ -269,7 +349,7 @@ export async function getTeacherAbsenteesByDate({ date }: { date: string }) {
     const result = await callBackend<any[]>({
       paths: [TEACHER_ABSENTEES_PATH, "/api/attendance/teacher/absentees"],
       method: "POST",
-      body: { date },
+      body: { date, courseName },
     })
     if (!result.success) return result
 
@@ -282,6 +362,10 @@ export async function getTeacherAbsenteesByDate({ date }: { date: string }) {
 
 export async function getStudentAbsenteeismByDate({ date }: { date: string }) {
   try {
+    if (USE_MOCK_DATA) {
+      return { success: true, data: [] }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "student") {
       return { success: false, error: "Not authorized" }
@@ -323,6 +407,10 @@ export async function setAbsenceStatusByTeacher({
   status: AbsenceStatus
 }) {
   try {
+    if (USE_MOCK_DATA) {
+      return { success: true }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "teacher") {
       return { success: false, error: "Not authorized" }
@@ -344,6 +432,12 @@ export async function setAbsenceStatusByTeacher({
 
 export async function getStudentAttendanceHistory() {
   try {
+    if (USE_MOCK_DATA) {
+      const records = buildMockAttendanceRecords()
+      records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      return { success: true, data: records }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data) {
       return { success: false, error: "Not authenticated" }
@@ -421,6 +515,12 @@ export async function getStudentAttendanceHistory() {
 
 export async function getAllAttendanceRecords() {
   try {
+    if (USE_MOCK_DATA) {
+      const records = buildMockAttendanceRecords()
+      records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      return { success: true, data: records }
+    }
+
     const profile = await getUserProfile()
     if (!profile.success || !profile.data || profile.data.role !== "teacher") {
       return { success: false, error: "Not authorized" }

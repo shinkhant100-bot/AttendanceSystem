@@ -348,7 +348,9 @@ export default function TeacherDashboard() {
               <CardDescription>Present</CardDescription>
               <CardTitle className="text-2xl text-green-700">{presentCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+            <CardContent className="text-xs text-gray-500">
+              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "All dates"}
+            </CardContent>
           </Card>
 
           <Card>
@@ -356,7 +358,9 @@ export default function TeacherDashboard() {
               <CardDescription>Late</CardDescription>
               <CardTitle className="text-2xl text-yellow-700">{lateCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+            <CardContent className="text-xs text-gray-500">
+              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "All dates"}
+            </CardContent>
           </Card>
 
           <Card>
@@ -364,7 +368,9 @@ export default function TeacherDashboard() {
               <CardDescription>Serious Late</CardDescription>
               <CardTitle className="text-2xl text-red-700">{seriousLateCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">Selected date</CardContent>
+            <CardContent className="text-xs text-gray-500">
+              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "All dates"}
+            </CardContent>
           </Card>
 
           <Card>
@@ -378,7 +384,7 @@ export default function TeacherDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-gray-500">
-              {absenteeDate ? `Date: ${format(absenteeDate, "PPP")}` : "Pick a date"}
+              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "Pick a date"}
             </CardContent>
           </Card>
         </div>
