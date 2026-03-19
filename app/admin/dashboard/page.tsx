@@ -53,7 +53,6 @@ export default function TeacherDashboard() {
   const [absentees, setAbsentees] = useState<
     { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave" }[]
   >([])
-  const [absenteeDate, setAbsenteeDate] = useState<Date | undefined>(new Date())
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
@@ -79,6 +78,11 @@ export default function TeacherDashboard() {
       .replaceAll("/", "-")
     if (raw.length >= 10) return raw.slice(0, 10)
     return null
+  }
+
+  function sameDay(a?: Date, b?: Date) {
+    if (!a || !b) return false
+    return format(a, "yyyy-MM-dd") === format(b, "yyyy-MM-dd")
   }
 
   const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null
@@ -166,16 +170,21 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     async function loadAbsenteesByDate() {
-      if (!absenteeDate) return
-      const selected = format(absenteeDate, "yyyy-MM-dd")
-      const result = await getTeacherAbsenteesByDate({ date: selected })
+      if (!selectedDate) {
+        setAbsentees([])
+        return
+      }
+      const selected = format(selectedDate, "yyyy-MM-dd")
+      const result = await getTeacherAbsenteesByDate({ date: selected, courseName: teacherSubjects[0] })
       if (result.success && result.data) {
         setAbsentees(result.data)
+      } else {
+        setAbsentees([])
       }
     }
 
     loadAbsenteesByDate()
-  }, [absenteeDate])
+  }, [selectedDate, teacherSubjects])
 
   async function handleExportData() {
     setIsExporting(true)
@@ -580,11 +589,11 @@ export default function TeacherDashboard() {
                             className="w-full justify-start text-left font-normal sm:w-[220px]"
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {absenteeDate ? format(absenteeDate, "PPP") : "Pick a date"}
+                            {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={absenteeDate} onSelect={setAbsenteeDate} initialFocus />
+                          <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                         </PopoverContent>
                       </Popover>
                     </div>
