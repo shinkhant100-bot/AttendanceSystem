@@ -47,6 +47,12 @@ function buildMockAttendanceRecords(): AttendanceRecord[] {
     "3": "Myat thu Kha",
     "4": "Thet Myat Noe",
   }
+  const rollNumbers: Record<string, string> = {
+    "1": "20260000005",
+    "2": "20260000006",
+    "3": "20260000007",
+    "4": "20260000008",
+  }
 
   const rows = [
     { id: 23, studentId: "4", date: "2026-03-11", time: "20:31:04", status: "present" },
@@ -67,7 +73,7 @@ function buildMockAttendanceRecords(): AttendanceRecord[] {
   return rows.map((row) => ({
     id: row.id,
     studentName: students[row.studentId] ?? `Student ${row.studentId}`,
-    rollNumber: row.studentId,
+    rollNumber: rollNumbers[row.studentId] ?? row.studentId,
     subject,
     teacherEmail,
     date: `${row.date}T${row.time}`,
@@ -201,7 +207,15 @@ function mapAttendanceRecord(item: any, index: number): AttendanceRecord {
     id: Number(item?.id ?? index + 1),
     studentName: String(item?.studentName ?? item?.student_name ?? item?.student?.name ?? item?.name ?? ""),
     rollNumber: String(
-      item?.rollNumber ?? item?.roll_number ?? item?.studentRollNumber ?? item?.student_roll_number ?? item?.student?.rollNumber ?? item?.student?.roll_number ?? "",
+      item?.rollNumber ??
+        item?.roll_number ??
+        item?.studentRollNumber ??
+        item?.student_roll_number ??
+        item?.student?.rollNumber ??
+        item?.student?.roll_number ??
+        item?.student_id ??
+        item?.studentId ??
+        "",
     ),
     subject: String(subject),
     teacherEmail: String(item?.teacherEmail ?? item?.teacher_email ?? item?.teacher?.email ?? ""),
@@ -433,7 +447,9 @@ export async function setAbsenceStatusByTeacher({
 export async function getStudentAttendanceHistory() {
   try {
     if (USE_MOCK_DATA) {
-      const records = buildMockAttendanceRecords()
+      const profile = await getUserProfile()
+      const roll = profile.success && profile.data ? String(profile.data.rollNumber ?? "") : ""
+      const records = roll ? buildMockAttendanceRecords().filter((r) => String(r.rollNumber) === roll) : []
       records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       return { success: true, data: records }
     }
@@ -444,6 +460,22 @@ export async function getStudentAttendanceHistory() {
     }
 
     const profileUserId = (profile.data as any).userId
+    const profileRollNumber = String(profile.data.rollNumber ?? "")
+    const profileEmail = String(profile.data.email ?? "").toLowerCase()
+
+    const matchesStudent = (row: any) => {
+      const rowStudentId =
+        row?.student_id ?? row?.studentId ?? row?.user_id ?? row?.userId ?? row?.student?.id ?? row?.student?.student_id
+      const rowRoll =
+        row?.roll_number ?? row?.rollNumber ?? row?.student_roll_number ?? row?.studentRollNumber ?? row?.student?.roll_number ?? row?.student?.rollNumber
+      const rowEmail = String(row?.student_email ?? row?.studentEmail ?? row?.student?.email ?? "").toLowerCase()
+
+      if (profileUserId && rowStudentId !== undefined && String(rowStudentId) === String(profileUserId)) return true
+      if (profileRollNumber && rowRoll !== undefined && String(rowRoll) === profileRollNumber) return true
+      if (profileEmail && rowEmail && rowEmail === profileEmail) return true
+      return false
+    }
+
     const studentFilters = {
       email: profile.data.email,
       rollNumber: profile.data.rollNumber,
@@ -477,25 +509,21 @@ export async function getStudentAttendanceHistory() {
         method: "POST",
         body: studentFilters,
       })
-      if (postResult.success) {
+    if (postResult.success) {
         result = postResult
       }
     }
 
     let sourceRows = result.data ?? []
+    if (sourceRows.length > 0) {
+      sourceRows = sourceRows.filter(matchesStudent)
+    }
     if (sourceRows.length === 0) {
       const genericResult = await callBackend<any[]>({
         paths: ["/api/attendances", "/api/attendance/list", "/api/attendance/records"],
       })
       if (genericResult.success) {
-        sourceRows = (genericResult.data ?? []).filter((row) => {
-          const rowStudentId = row?.student_id ?? row?.studentId ?? row?.student?.id
-          const rowRoll = row?.roll_number ?? row?.rollNumber ?? row?.student?.roll_number ?? row?.student?.rollNumber
-          return (
-            (profileUserId && String(rowStudentId) === String(profileUserId)) ||
-            (profile.data.rollNumber && String(rowRoll) === String(profile.data.rollNumber))
-          )
-        })
+        sourceRows = (genericResult.data ?? []).filter(matchesStudent)
       }
     }
 

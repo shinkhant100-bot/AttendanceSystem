@@ -14,7 +14,6 @@ import { CalendarIcon, Download, Fingerprint, Search } from "lucide-react"
 import {
   getAllAttendanceRecords,
   getFingerprintRoster,
-  markAttendanceByFingerprint,
   getTeacherAbsenteesByDate,
   setAbsenceStatusByTeacher,
 } from "@/app/actions/attendance-actions"
@@ -56,18 +55,7 @@ export default function TeacherDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
-  const [isScanning, setIsScanning] = useState(false)
   const [savingAbsenceKey, setSavingAbsenceKey] = useState<string | null>(null)
-  const [lastScannedFingerprintId, setLastScannedFingerprintId] = useState("")
-
-  const rosterIsMock = fingerprintRoster.length === 0
-  const mockRoster: FingerprintStudent[] = [
-    { name: "Demo Student A", rollNumber: "S-001", fingerprintId: "1" },
-    { name: "Demo Student B", rollNumber: "S-002", fingerprintId: "2" },
-    { name: "Demo Student C", rollNumber: "S-003", fingerprintId: "3" },
-    { name: "Demo Student D", rollNumber: "S-004", fingerprintId: "4" },
-  ]
-  const rosterToRender = rosterIsMock ? mockRoster : fingerprintRoster
 
   function toDateKey(value: unknown) {
     if (!value) return null
@@ -129,7 +117,7 @@ export default function TeacherDashboard() {
         }
 
         const today = format(new Date(), "yyyy-MM-dd")
-        const absenteeData = await getTeacherAbsenteesByDate({ date: today })
+        const absenteeData = await getTeacherAbsenteesByDate({ date: today, courseName: profile.data.subjects?.[0] })
         if (absenteeData.success && absenteeData.data) {
           setAbsentees(absenteeData.data)
         } else {
@@ -224,49 +212,6 @@ export default function TeacherDashboard() {
     }
   }
 
-  async function handleFingerprintScan(fingerprintId: string) {
-    if (rosterIsMock) {
-      toast({
-        title: "Mock Data",
-        description: "This is demo data. Connect backend roster to mark attendance.",
-        variant: "destructive",
-      })
-      return
-    }
-    setIsScanning(true)
-    setLastScannedFingerprintId(fingerprintId)
-    try {
-      const result = await markAttendanceByFingerprint({ fingerprintId })
-
-      if (result.success) {
-        toast({
-          title: "Fingerprint Accepted",
-          description: `${result.message || "Attendance marked"} (ID: ${fingerprintId})`,
-        })
-
-        const records = await getAllAttendanceRecords()
-        if (records.success && records.data) {
-          setAttendanceRecords(records.data)
-          setFilteredRecords(records.data)
-        }
-      } else {
-        toast({
-          title: "Scan Failed",
-          description: result.error || "Failed to mark attendance",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Scan Failed",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      })
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
   async function handleLogout() {
     await logout()
     clearToken()
@@ -286,6 +231,7 @@ export default function TeacherDashboard() {
         date: item.date,
         status,
       })
+
       if (!result.success) {
         toast({
           title: "Update Failed",
@@ -334,11 +280,10 @@ export default function TeacherDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Students</CardDescription>
-              <CardTitle className="text-2xl">{rosterToRender.length}</CardTitle>
+              <CardTitle className="text-2xl">{fingerprintRoster.length}</CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-gray-500">
               {teacherSubjects[0] ? `Subject: ${teacherSubjects[0]}` : "No subject assigned"}
-              {rosterIsMock ? " (mock)" : ""}
             </CardContent>
           </Card>
 
@@ -409,8 +354,8 @@ export default function TeacherDashboard() {
           <TabsContent value="fingerprint" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Fingerprint Attendance</CardTitle>
-                <CardDescription>Click a student fingerprint to mark attendance</CardDescription>
+                <CardTitle>Student List</CardTitle>
+                <CardDescription>View students in your subject</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -420,41 +365,31 @@ export default function TeacherDashboard() {
                   </div>
                   <div className="text-sm text-gray-600">
                     <span className="font-medium text-gray-800">Students in subject: </span>
-                    {rosterToRender.length}
-                    {rosterIsMock ? <span className="ml-2 text-xs text-gray-500">(mock)</span> : null}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium text-gray-800">Last scanned fingerprint ID: </span>
-                    {lastScannedFingerprintId || "-"}
+                    {fingerprintRoster.length}
                   </div>
 
                   {fingerprintRoster.length === 0 ? (
-                    <div className="rounded-md border bg-white p-4 text-sm text-gray-600">
-                      No roster from backend yet, showing demo students so the UI is not empty.
+                    <div className="rounded-md border bg-white p-4 text-sm text-gray-600">No students found.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {fingerprintRoster.map((student) => (
+                        <div
+                          key={student.fingerprintId}
+                          className="rounded-md border bg-white p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2 text-primary">
+                            <Fingerprint className="h-4 w-4" />
+                            <span>Fingerprint</span>
+                          </div>
+                          <div className="text-left">
+                            <p className="font-medium">{student.name}</p>
+                            <p className="text-xs text-gray-500">{student.rollNumber}</p>
+                            <p className="text-xs text-gray-500">ID: {student.fingerprintId}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ) : null}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {rosterToRender.map((student) => (
-                      <Button
-                        key={student.fingerprintId}
-                        variant="outline"
-                        className="h-auto p-4 flex flex-col items-start gap-2"
-                        onClick={() => handleFingerprintScan(student.fingerprintId)}
-                        disabled={isScanning}
-                      >
-                        <div className="flex items-center gap-2 text-primary">
-                          <Fingerprint className="h-4 w-4" />
-                          <span>Fingerprint</span>
-                        </div>
-                        <div className="text-left">
-                          <p className="font-medium">{student.name}</p>
-                          <p className="text-xs text-gray-500">{student.rollNumber}</p>
-                          <p className="text-xs text-gray-500">ID: {student.fingerprintId}</p>
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -641,7 +576,7 @@ export default function TeacherDashboard() {
                                   value={item.status}
                                   disabled={savingAbsenceKey === `${item.rollNumber}-${item.subject}-${item.date}`}
                                   onChange={(e) =>
-                                    handleAbsenceStatusChange(item, e.target.value as "absent" | "leave")
+                                    handleAbsenceStatusChange(item, e.target.value === "leave" ? "leave" : "absent")
                                   }
                                 >
                                   <option value="absent">Absent</option>
