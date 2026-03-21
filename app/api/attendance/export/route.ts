@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
   // Default to CSV since the UI advertises CSV export.
   if (!backendUrl.searchParams.get("format")) {
-    backendUrl.searchParams.set("format", "csv")
+    backendUrl.searchParams.set("format", "pdf")
   }
 
   const cookieStore = await cookies()

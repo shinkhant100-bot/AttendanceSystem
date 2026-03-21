@@ -55,6 +55,8 @@ export default function TeacherDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
+  const [exportMode, setExportMode] = useState<"date" | "month">("date")
+  const [exportFormat, setExportFormat] = useState<"pdf" | "csv">("pdf")
   const [savingAbsenceKey, setSavingAbsenceKey] = useState<string | null>(null)
   const [pendingAbsenceStatus, setPendingAbsenceStatus] = useState<Record<string, "absent" | "leave">>({})
 
@@ -178,7 +180,6 @@ export default function TeacherDashboard() {
   async function handleExportData() {
     setIsExporting(true)
     try {
-      const date = selectedDate ? format(selectedDate, "yyyy-MM-dd") : undefined
       const courseName = teacherSubjects.length === 1 ? teacherSubjects[0] : teacherSubjects[0]
 
       if (!courseName) {
@@ -190,10 +191,23 @@ export default function TeacherDashboard() {
         return
       }
 
+      if (!selectedDate) {
+        toast({
+          title: "Export Failed",
+          description: exportMode === "month" ? "Please pick a month" : "Please pick a date",
+          variant: "destructive",
+        })
+        return
+      }
+
       const params = new URLSearchParams()
       params.set("courseName", courseName)
-      if (date) params.set("date", date)
-      params.set("format", "csv")
+      if (exportMode === "month") {
+        params.set("month", format(selectedDate, "yyyy-MM"))
+      } else {
+        params.set("date", format(selectedDate, "yyyy-MM-dd"))
+      }
+      params.set("format", exportFormat)
 
       // Use a Next.js API proxy route so cookies/Authorization are handled server-side.
       window.location.href = `/api/attendance/export?${params.toString()}`
@@ -643,8 +657,36 @@ export default function TeacherDashboard() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="export-mode">Export Type</Label>
+                        <select
+                          id="export-mode"
+                          className="h-10 w-full rounded-md border px-3"
+                          value={exportMode}
+                          onChange={(e) => setExportMode(e.target.value === "month" ? "month" : "date")}
+                        >
+                          <option value="date">By Date</option>
+                          <option value="month">By Month</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="export-format">Format</Label>
+                        <select
+                          id="export-format"
+                          className="h-10 w-full rounded-md border px-3"
+                          value={exportFormat}
+                          onChange={(e) => setExportFormat(e.target.value === "csv" ? "csv" : "pdf")}
+                        >
+                          <option value="pdf">PDF</option>
+                          <option value="csv">CSV</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="export-date">Select Date</Label>
+                      <Label htmlFor="export-date">{exportMode === "month" ? "Select Month" : "Select Date"}</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
@@ -653,7 +695,13 @@ export default function TeacherDashboard() {
                             className="w-full justify-start text-left font-normal"
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+                            {selectedDate
+                              ? exportMode === "month"
+                                ? format(selectedDate, "MMMM yyyy")
+                                : format(selectedDate, "PPP")
+                              : exportMode === "month"
+                                ? "Pick a month"
+                                : "Pick a date"}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
@@ -678,10 +726,10 @@ export default function TeacherDashboard() {
                   <div className="bg-gray-50 p-4 rounded-md border">
                     <h3 className="font-medium mb-2">Export Information</h3>
                     <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600">
-                      <li>Exports are generated as CSV files</li>
-                      <li>Files are secured with encryption</li>
+                      <li>Exports can be generated as PDF or CSV</li>
+                      <li>PDF includes attendance plus absences/leave for the selected date/month</li>
                       <li>Only records for your assigned subjects are included</li>
-                      <li>You can filter by date before exporting</li>
+                      <li>Choose by date or by month before exporting</li>
                     </ul>
                   </div>
                 </div>

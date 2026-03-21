@@ -40,10 +40,6 @@ export default function StudentDashboard() {
   const [absences, setAbsences] = useState<{ subject: string; date: string; status: string }[]>([])
   const [monthlyAbsences, setMonthlyAbsences] = useState<{ subject: string; date: string; status: string }[]>([])
 
-  const totalRecords = attendanceHistory.length
-  const presentCount = attendanceHistory.filter((record) => record.status === "present").length
-  const lateCount = attendanceHistory.filter((record) => record.status === "late").length
-  const seriousLateCount = attendanceHistory.filter((record) => record.status === "serious late").length
   const absenceAbsentCount = absences.filter((item) => String(item.status).toLowerCase() !== "leave").length
   const absenceLeaveCount = absences.filter((item) => String(item.status).toLowerCase() === "leave").length
   const monthlyAbsenceAbsentCount = monthlyAbsences.filter((item) => String(item.status).toLowerCase() !== "leave").length
@@ -71,6 +67,13 @@ export default function StudentDashboard() {
     }
     return true
   })
+
+  const summaryDateLabel = historyDate ? `Date: ${format(historyDate, "PPP")}` : "All time"
+  const summarySubjectLabel = historySubject !== "all" ? `Subject: ${historySubject}` : "All subjects"
+  const totalRecords = filteredAttendanceHistory.length
+  const presentCount = filteredAttendanceHistory.filter((record) => record.status === "present").length
+  const lateCount = filteredAttendanceHistory.filter((record) => record.status === "late").length
+  const seriousLateCount = filteredAttendanceHistory.filter((record) => record.status === "serious late").length
 
   useEffect(() => {
     async function loadUserData() {
@@ -226,7 +229,10 @@ export default function StudentDashboard() {
               <CardDescription>Total Records</CardDescription>
               <CardTitle className="text-2xl">{totalRecords}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">All subjects</CardContent>
+            <CardContent className="text-xs text-gray-500">
+              <div>{summarySubjectLabel}</div>
+              <div>{summaryDateLabel}</div>
+            </CardContent>
           </Card>
 
           <Card>
@@ -234,7 +240,7 @@ export default function StudentDashboard() {
               <CardDescription>Present</CardDescription>
               <CardTitle className="text-2xl text-green-700">{presentCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">All time</CardContent>
+            <CardContent className="text-xs text-gray-500">{summaryDateLabel}</CardContent>
           </Card>
 
           <Card>
@@ -242,7 +248,7 @@ export default function StudentDashboard() {
               <CardDescription>Late</CardDescription>
               <CardTitle className="text-2xl text-yellow-700">{lateCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">All time</CardContent>
+            <CardContent className="text-xs text-gray-500">{summaryDateLabel}</CardContent>
           </Card>
 
           <Card>
@@ -250,7 +256,7 @@ export default function StudentDashboard() {
               <CardDescription>Serious Late</CardDescription>
               <CardTitle className="text-2xl text-red-700">{seriousLateCount}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-gray-500">All time</CardContent>
+            <CardContent className="text-xs text-gray-500">{summaryDateLabel}</CardContent>
           </Card>
 
           <Card>
