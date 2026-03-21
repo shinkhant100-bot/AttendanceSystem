@@ -50,12 +50,13 @@ export default function TeacherDashboard() {
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
   const [fingerprintRoster, setFingerprintRoster] = useState<FingerprintStudent[]>([])
   const [absentees, setAbsentees] = useState<
-    { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave" }[]
+    { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave"; confirmed?: boolean }[]
   >([])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
   const [savingAbsenceKey, setSavingAbsenceKey] = useState<string | null>(null)
+  const [pendingAbsenceStatus, setPendingAbsenceStatus] = useState<Record<string, "absent" | "leave">>({})
 
   function toDateKey(value: unknown) {
     if (!value) return null
@@ -218,8 +219,8 @@ export default function TeacherDashboard() {
     router.push("/login?role=teacher")
   }
 
-  async function handleAbsenceStatusChange(
-    item: { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave" },
+  async function handleAbsenceStatusConfirm(
+    item: { studentName: string; rollNumber: string; subject: string; date: string; status: "absent" | "leave"; confirmed?: boolean },
     status: "absent" | "leave",
   ) {
     const rowKey = `${item.rollNumber}-${item.subject}-${item.date}`
@@ -244,10 +245,16 @@ export default function TeacherDashboard() {
       setAbsentees((prev) =>
         prev.map((entry) =>
           entry.rollNumber === item.rollNumber && entry.subject === item.subject && entry.date === item.date
-            ? { ...entry, status }
+            ? { ...entry, status, confirmed: true }
             : entry,
         ),
       )
+
+      setPendingAbsenceStatus((prev) => {
+        const next = { ...prev }
+        delete next[rowKey]
+        return next
+      })
     } finally {
       setSavingAbsenceKey(null)
     }
@@ -559,7 +566,7 @@ export default function TeacherDashboard() {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {absentees.length > 0 ? (
                           absentees.map((item, index) => (
-                            <tr key={`${item.rollNumber}-${item.subject}-${index}`}>
+                            <tr key={`${item.rollNumber}-${item.subject}-${item.date}-${index}`}>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.rollNumber}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.studentName}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.subject}</td>
@@ -571,17 +578,39 @@ export default function TeacherDashboard() {
                                 {item.status === "leave" ? "Leave" : "Absent"}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                <select
-                                  className="h-9 rounded-md border px-2"
-                                  value={item.status}
-                                  disabled={savingAbsenceKey === `${item.rollNumber}-${item.subject}-${item.date}`}
-                                  onChange={(e) =>
-                                    handleAbsenceStatusChange(item, e.target.value === "leave" ? "leave" : "absent")
-                                  }
-                                >
-                                  <option value="absent">Absent</option>
-                                  <option value="leave">Leave</option>
-                                </select>
+                                {(() => {
+                                  const rowKey = `${item.rollNumber}-${item.subject}-${item.date}`
+                                  const currentValue = pendingAbsenceStatus[rowKey] ?? item.status
+                                  const isSaving = savingAbsenceKey === rowKey
+                                  const isDirty = !item.confirmed || currentValue !== item.status
+
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        className="h-9 rounded-md border px-2"
+                                        value={currentValue}
+                                        disabled={isSaving}
+                                        onChange={(e) =>
+                                          setPendingAbsenceStatus((prev) => ({
+                                            ...prev,
+                                            [rowKey]: e.target.value === "leave" ? "leave" : "absent",
+                                          }))
+                                        }
+                                      >
+                                        <option value="absent">Absent</option>
+                                        <option value="leave">Leave</option>
+                                      </select>
+                                      <Button
+                                        variant="outline"
+                                        className="h-9 px-3"
+                                        disabled={isSaving || !isDirty}
+                                        onClick={() => handleAbsenceStatusConfirm(item, currentValue)}
+                                      >
+                                        {item.confirmed ? "Update" : "Confirm"}
+                                      </Button>
+                                    </div>
+                                  )
+                                })()}
                               </td>
                             </tr>
                           ))

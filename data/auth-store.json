@@ -21,7 +21,7 @@
       "rollNumber": "",
       "role": "teacher",
       "subjects": [
-        "ANIME"
+        "BPS"
       ]
     },
     {
@@ -34,7 +34,7 @@
       "fingerprintId": "1",
       "role": "student",
       "subjects": [
-        "ANIME",
+        "BPS",
         "CRP"
       ]
     },
@@ -48,7 +48,7 @@
       "fingerprintId": "2",
       "role": "student",
       "subjects": [
-        "ANIME",
+        "BPS",
         "CRP"
       ]
     },
@@ -62,7 +62,7 @@
       "fingerprintId": "3",
       "role": "student",
       "subjects": [
-        "ANIME"
+        "BPS"
       ]
     },
     {
@@ -75,14 +75,14 @@
       "fingerprintId": "4",
       "role": "student",
       "subjects": [
-        "ANIME"
+        "BPS"
       ]
     }
   ],
   "courses": [
     {
       "id": 2,
-      "name": "ANIME",
+      "name": "BPS",
       "teacherEmail": "sayar1@gmail.com",
       "studentRollNumbers": [
         "20260000006",

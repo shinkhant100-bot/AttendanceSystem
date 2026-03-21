@@ -7,7 +7,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
-import { getStudentAttendanceHistory, getStudentAbsenteeismByDate } from "@/app/actions/attendance-actions"
+import { getStudentAttendanceHistory, getStudentAbsenteeismByDate, getStudentAbsenteeismByMonth } from "@/app/actions/attendance-actions"
 import { useToast } from "@/hooks/use-toast"
 import type { AttendanceRecord } from "@/app/types"
 import { getUserProfile, logout } from "@/app/actions/auth-actions"
@@ -34,8 +34,11 @@ export default function StudentDashboard() {
   const [userProfile, setUserProfile] = useState<{ name: string; rollNumber: string; subjects?: string[] } | null>(null)
   const [historySubject, setHistorySubject] = useState("all")
   const [historyDate, setHistoryDate] = useState<Date | undefined>(undefined)
+  const [absenteeMode, setAbsenteeMode] = useState<"date" | "month">("date")
   const [absenteeDate, setAbsenteeDate] = useState<Date | undefined>(new Date())
+  const [absenteeMonth, setAbsenteeMonth] = useState<Date | undefined>(new Date())
   const [absences, setAbsences] = useState<{ subject: string; date: string; status: string }[]>([])
+  const [monthlyAbsences, setMonthlyAbsences] = useState<{ subject: string; date: string; status: string }[]>([])
 
   const totalRecords = attendanceHistory.length
   const presentCount = attendanceHistory.filter((record) => record.status === "present").length
@@ -43,6 +46,10 @@ export default function StudentDashboard() {
   const seriousLateCount = attendanceHistory.filter((record) => record.status === "serious late").length
   const absenceAbsentCount = absences.filter((item) => String(item.status).toLowerCase() !== "leave").length
   const absenceLeaveCount = absences.filter((item) => String(item.status).toLowerCase() === "leave").length
+  const monthlyAbsenceAbsentCount = monthlyAbsences.filter((item) => String(item.status).toLowerCase() !== "leave").length
+  const monthlyAbsenceLeaveCount = monthlyAbsences.filter((item) => String(item.status).toLowerCase() === "leave").length
+
+  const currentAbsences = absenteeMode === "month" ? monthlyAbsences : absences
 
   const attendanceSubjects = Array.from(
     new Set([...(userProfile?.subjects ?? []), ...attendanceHistory.map((record) => record.subject)].filter(Boolean)),
@@ -104,6 +111,14 @@ export default function StudentDashboard() {
         } else {
           setAbsences([])
         }
+
+        const monthKey = format(new Date(), "yyyy-MM")
+        const monthly = await getStudentAbsenteeismByMonth({ month: monthKey })
+        if (monthly.success && monthly.data) {
+          setMonthlyAbsences(monthly.data)
+        } else {
+          setMonthlyAbsences([])
+        }
       } catch (error) {
         toast({
           title: "Error",
@@ -120,17 +135,53 @@ export default function StudentDashboard() {
   }, [router, toast])
 
   useEffect(() => {
+    if (!userProfile) return
+
+    let cancelled = false
+    async function refreshHistory() {
+      const history = await getStudentAttendanceHistory()
+      if (cancelled) return
+      if (history.success && history.data) {
+        setAttendanceHistory(history.data)
+      }
+    }
+
+    const interval = setInterval(refreshHistory, 10000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [userProfile])
+
+  useEffect(() => {
     async function loadAbsenteeism() {
       if (!absenteeDate) return
       const selected = format(absenteeDate, "yyyy-MM-dd")
       const result = await getStudentAbsenteeismByDate({ date: selected })
       if (result.success && result.data) {
         setAbsences(result.data)
+      } else {
+        setAbsences([])
       }
     }
 
     loadAbsenteeism()
   }, [absenteeDate])
+
+  useEffect(() => {
+    async function loadMonthlyAbsences() {
+      if (!absenteeMonth) return
+      const monthKey = format(absenteeMonth, "yyyy-MM")
+      const result = await getStudentAbsenteeismByMonth({ month: monthKey })
+      if (result.success && result.data) {
+        setMonthlyAbsences(result.data)
+      } else {
+        setMonthlyAbsences([])
+      }
+    }
+
+    loadMonthlyAbsences()
+  }, [absenteeMonth])
 
   async function handleLogout() {
     await logout()
@@ -297,20 +348,40 @@ export default function StudentDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Absenteeism</CardTitle>
-                <CardDescription>Choose a date to view absences</CardDescription>
+                <CardDescription>View your absences by date or month</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select
+                      className="h-10 rounded-md border px-3"
+                      value={absenteeMode}
+                      onChange={(e) => setAbsenteeMode(e.target.value === "month" ? "month" : "date")}
+                    >
+                      <option value="date">By Date</option>
+                      <option value="month">By Month</option>
+                    </select>
+
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {absenteeDate ? format(absenteeDate, "PPP") : "Pick a date"}
+                          {absenteeMode === "month"
+                            ? absenteeMonth
+                              ? format(absenteeMonth, "MMMM yyyy")
+                              : "Pick a month"
+                            : absenteeDate
+                              ? format(absenteeDate, "PPP")
+                              : "Pick a date"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={absenteeDate} onSelect={setAbsenteeDate} initialFocus />
+                        <Calendar
+                          mode="single"
+                          selected={absenteeMode === "month" ? absenteeMonth : absenteeDate}
+                          onSelect={absenteeMode === "month" ? setAbsenteeMonth : setAbsenteeDate}
+                          initialFocus
+                        />
                       </PopoverContent>
                     </Popover>
                   </div>
@@ -319,6 +390,11 @@ export default function StudentDashboard() {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
+                          {absenteeMode === "month" ? (
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Date
+                            </th>
+                          ) : null}
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Subject
                           </th>
@@ -328,9 +404,14 @@ export default function StudentDashboard() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {absences.length > 0 ? (
-                          absences.map((item, index) => (
-                            <tr key={`${item.subject}-${index}`}>
+                        {currentAbsences.length > 0 ? (
+                          currentAbsences.map((item, index) => (
+                            <tr key={`${item.subject}-${item.date}-${index}`}>
+                              {absenteeMode === "month" ? (
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {new Date(item.date).toLocaleDateString()}
+                                </td>
+                              ) : null}
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.subject}</td>
                               <td
                                 className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
@@ -343,8 +424,11 @@ export default function StudentDashboard() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={2} className="px-6 py-4 text-center text-sm text-gray-500">
-                              No absences for selected date
+                            <td
+                              colSpan={absenteeMode === "month" ? 3 : 2}
+                              className="px-6 py-4 text-center text-sm text-gray-500"
+                            >
+                              {absenteeMode === "month" ? "No absences for selected month" : "No absences for selected date"}
                             </td>
                           </tr>
                         )}

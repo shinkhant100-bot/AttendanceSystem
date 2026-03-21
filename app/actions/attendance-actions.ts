@@ -25,6 +25,8 @@ const FINGERPRINT_ROSTER_PATH = process.env.FINGERPRINT_ROSTER_PATH ?? "/api/att
 const MARK_FINGERPRINT_PATH = process.env.MARK_FINGERPRINT_PATH ?? "/api/attendance/fingerprint/mark"
 const TEACHER_ABSENTEES_PATH = process.env.TEACHER_ABSENTEES_PATH ?? "/api/attendance/teacher/absentees"
 const STUDENT_ABSENTEEISM_PATH = process.env.STUDENT_ABSENTEEISM_PATH ?? "/api/attendance/student/absenteeism"
+const STUDENT_ABSENTEEISM_MONTH_PATH =
+  process.env.STUDENT_ABSENTEEISM_MONTH_PATH ?? "/api/attendance/student/absenteeism/month"
 const STUDENT_HISTORY_PATH = process.env.STUDENT_HISTORY_PATH ?? "/api/attendance/student/history"
 const TEACHER_RECORDS_PATH = process.env.TEACHER_RECORDS_PATH ?? "/api/attendance/teacher/records"
 const EXPORT_ATTENDANCE_PATH = process.env.EXPORT_ATTENDANCE_PATH ?? "/api/attendance/export"
@@ -39,7 +41,7 @@ function getApiUrl(path: string) {
 }
 
 function buildMockAttendanceRecords(): AttendanceRecord[] {
-  const subject = "ANIME"
+  const subject = "BPS"
   const teacherEmail = "teacher@example.com"
   const students: Record<string, string> = {
     "1": "Shinn Khant Aung",
@@ -348,7 +350,7 @@ export async function getTeacherAbsenteesByDate({ date, courseName }: { date: st
           .map((s) => ({
             studentName: s.studentName,
             rollNumber: s.rollNumber,
-            subject: courseName ?? "ANIME",
+            subject: courseName ?? "BPS",
             date: dateKey,
             status: "absent" as const,
           })),
@@ -388,7 +390,7 @@ export async function getStudentAbsenteeismByDate({ date }: { date: string }) {
     const result = await callBackend<any[]>({
       paths: [STUDENT_ABSENTEEISM_PATH, "/api/attendance/student/absenteeism"],
       method: "POST",
-      body: { date },
+      body: { date, subjects: profile.data.subjects ?? [] },
     })
     if (!result.success) return result
 
@@ -406,6 +408,41 @@ export async function getStudentAbsenteeismByDate({ date }: { date: string }) {
   } catch (error) {
     console.error("Get student absenteeism error:", error)
     return { success: false, error: "Failed to load absenteeism" }
+  }
+}
+
+export async function getStudentAbsenteeismByMonth({ month }: { month: string }) {
+  try {
+    if (USE_MOCK_DATA) {
+      return { success: true, data: [] as { subject: string; date: string; status: AbsenceStatus }[] }
+    }
+
+    const profile = await getUserProfile()
+    if (!profile.success || !profile.data || profile.data.role !== "student") {
+      return { success: false, error: "Not authorized" }
+    }
+
+    const result = await callBackend<any[]>({
+      paths: [STUDENT_ABSENTEEISM_MONTH_PATH, "/api/attendance/student/absenteeism/month"],
+      method: "POST",
+      body: { month, subjects: profile.data.subjects ?? [] },
+    })
+    if (!result.success) return result
+
+    return {
+      success: true,
+      data: (result.data ?? []).map((item) => {
+        const rawStatus = String(item?.status ?? "absent").toLowerCase()
+        return {
+          subject: String(item?.subject ?? ""),
+          date: String(item?.date ?? ""),
+          status: (rawStatus === "leave" ? "leave" : "absent") as AbsenceStatus,
+        }
+      }),
+    }
+  } catch (error) {
+    console.error("Get student absenteeism by month error:", error)
+    return { success: false, error: "Failed to load monthly absenteeism" }
   }
 }
 
